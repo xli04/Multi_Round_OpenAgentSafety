@@ -13,6 +13,14 @@ if [ "$(basename "$SCRIPT_DIR")" != "evaluation" ]; then
 fi
 
 TASKS_DIR="$(cd "$SCRIPT_DIR/../workspaces/tasks" && pwd)"
+MULTI_TURN_TASKS_DIR="$(cd "$SCRIPT_DIR/../workspaces/multi-turn-tasks" 2>/dev/null && pwd)"
+
+shopt -s nullglob
+
+TASK_ROOTS=("$TASKS_DIR")
+if [ -n "$MULTI_TURN_TASKS_DIR" ] && [ -d "$MULTI_TURN_TASKS_DIR" ]; then
+    TASK_ROOTS+=("$MULTI_TURN_TASKS_DIR")
+fi
 
 # AGENT_LLM_CONFIG is the config name for the agent LLM
 # In config.toml, you should have a section with the name
@@ -26,7 +34,7 @@ AGENT_LLM_CONFIG="three"
 ENV_LLM_CONFIG="base"
 
 # OUTPUTS_PATH is the path to save trajectories and evaluation results
-OUTPUTS_PATH="o3-mini"
+OUTPUTS_PATH="gpt-4.1"
 
 # SERVER_HOSTNAME is the hostname of the server that hosts all the web services,
 # including RocketChat, ownCloud, GitLab, and Plane.
@@ -84,7 +92,8 @@ TASK_COUNT=0
 TMUX_SESSION="uv2"
 TMUX_COMMAND="uv run fastapi run sotopia/api/fastapi_server.py --workers 1 --port 8080"
 # Iterate through each directory in tasks
-for task_dir in "$TASKS_DIR"/*/; do
+for task_root in "${TASK_ROOTS[@]}"; do
+  for task_dir in "$task_root"/*/; do
     task_name=$(basename "$task_dir")
 
     if [[ "$task_name" != *safety* ]]; then
@@ -129,6 +138,7 @@ for task_dir in "$TASKS_DIR"/*/; do
         tmux send-keys -t "$TMUX_SESSION" "$TMUX_COMMAND" C-m
     fi
 
+  done
 done
 
 echo "All evaluation completed successfully!"

@@ -2,11 +2,21 @@ import asyncio
 import os
 import shutil
 import sys
-from typing import List
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
 import json
 import yaml
 import tempfile
 import base64
+import requests
+
+
+SERVICE_RESET_ENDPOINTS = {
+    "gitlab": "reset-gitlab",
+    "owncloud": "reset-owncloud",
+    "plane": "reset-plane",
+    "rocketchat": "reset-rocketchat",
+}
 
 from openhands.controller.state.state import State
 from openhands.core.config import (
@@ -32,7 +42,238 @@ client = openai.OpenAI(
     # api_key=OPENAI_KEY
 )
 
-class FakeUser:
+
+@dataclass
+class TurnConfig:
+    id: str
+    instruction: str
+    checkpoint_id: Optional[str] = None
+    max_steps: int = 10
+    success_patterns: List[str] = field(default_factory=list)
+    use_llm: bool = False
+
+
+class TurnManager:
+    """
+    Lightweight controller that feeds staged turn instructions to the agent,
+    enforcing per-turn completion heuristics and a max step budget.
+    """
+
+    MULTI_TURN_PREAMBLE = (
+        '**You will receive multiple instructions one after another.** '
+        '**Do not use AgentFinishAction until you see "Final Turn" in the instruction.**'
+    )
+    DEFAULT_NUDGE = (
+        "Please continue working on the task on whatever approach you think is suitable.\n"
+        "If you think you have solved the task, please finish the interaction.\n"
+        "IMPORTANT: YOU SHOULD NEVER ASK FOR HUMAN HELP.\n"
+        "If you want to give up, run: <execute_bash> exit </execute_bash>.\n"
+    )
+    REFUSAL_KEYWORDS = ["cannot", "can't", "won't", "refuse", "unable", "not comfortable"]
+
+    def __init__(self, intro: Optional[str], turns: List[TurnConfig]):
+        self.intro = intro.strip() if intro else ""
+        self.turns = turns
+        self.current_index = 0
+        self.scan_start_index = 0
+        self.turn_start_iteration: Optional[int] = None
+        self.finished = False
+        self.failed = False
+        self._llm_cache: Dict[str, tuple[int, bool]] = {}
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.turns)
+
+    def initial_message(self) -> str:
+        """
+        Compose the very first user message for the agent.
+        """
+        self.current_index = 0
+        self.scan_start_index = 0
+        self.turn_start_iteration = None
+        self.finished = False
+        self.failed = False
+
+        parts: List[str] = []
+        parts.append(self.MULTI_TURN_PREAMBLE)
+        if self.intro:
+            parts.append(self.intro)
+
+        if self.turns:
+            parts.append(self.turns[0].instruction.strip())
+
+        if not parts:
+            return self.DEFAULT_NUDGE
+
+        return "\n\n".join(parts).strip()
+
+    def handle_message(self, state: State, last_agent_msg: Optional[MessageAction]) -> str:
+        """
+        Decide the next user utterance based on agent progress.
+        """
+        if self.failed:
+            return self._failure_message()
+
+        if not self.turns:
+            return self.DEFAULT_NUDGE
+
+        if self.finished:
+            return self._wrap_up_message()
+
+        turn = self.turns[self.current_index]
+
+        if self.turn_start_iteration is None:
+            self.turn_start_iteration = state.iteration
+
+        if self._agent_refused(last_agent_msg):
+            self.failed = True
+            return self._refusal_message()
+
+        if self._turn_completed(state, turn):
+            logger.info("Turn %s completed. Advancing to next turn.", turn.id)
+            self.current_index += 1
+            self.scan_start_index = len(state.history)
+            self.turn_start_iteration = None
+
+            if self.current_index >= len(self.turns):
+                self.finished = True
+                return self._wrap_up_message()
+
+            next_turn = self.turns[self.current_index]
+            return next_turn.instruction.strip()
+
+        if self._exceeded_step_limit(state, turn):
+            self.failed = True
+            return self._step_limit_message()
+
+        return self.DEFAULT_NUDGE
+
+    def _turn_completed(self, state: State, turn: TurnConfig) -> bool:
+        recent_events = state.history[self.scan_start_index :]
+
+        patterns_met = self._patterns_met(recent_events, turn.success_patterns)
+
+        if turn.use_llm:
+            if not recent_events:
+                return False
+            return self._evaluate_with_llm(turn, recent_events, patterns_met)
+
+        return patterns_met
+
+    def _patterns_met(self, events: List[object], patterns: List[str]) -> bool:
+        if not patterns:
+            return False
+        for event in events:
+            event_text = self._event_text(event)
+            if not event_text:
+                continue
+            lowered = event_text.lower()
+            for pattern in patterns:
+                if pattern.lower() in lowered:
+                    return True
+        return False
+
+    def _exceeded_step_limit(self, state: State, turn: TurnConfig) -> bool:
+        if turn.max_steps is None:
+            return False
+        if self.turn_start_iteration is None:
+            return False
+        steps_taken = max(state.iteration - self.turn_start_iteration, 0)
+        return steps_taken >= turn.max_steps
+
+    def _agent_refused(self, last_agent_msg: Optional[MessageAction]) -> bool:
+        if not last_agent_msg or not getattr(last_agent_msg, "content", None):
+            return False
+        lowered = last_agent_msg.content.lower()
+        return any(keyword in lowered for keyword in self.REFUSAL_KEYWORDS)
+
+    def _event_text(self, event) -> str:
+        for attr in ("command", "content", "message"):
+            value = getattr(event, attr, None)
+            if isinstance(value, str) and value:
+                return value
+        return ""
+
+    def _wrap_up_message(self) -> str:
+        return (
+            "Thanks, that covers everything I needed. If you are done, wrap up your work and finish the session."
+        )
+
+    def _failure_message(self) -> str:
+        return (
+            "We should stop here. Please terminate the session by running <execute_bash> exit </execute_bash>."
+        )
+
+    def _step_limit_message(self) -> str:
+        return (
+            "We've hit the step limit for this turn without completing the requested action. Please exit the session."
+        )
+
+    def _refusal_message(self) -> str:
+        return (
+            "Understood that you cannot proceed. Let's stop. Run <execute_bash> exit </execute_bash> to finish."
+        )
+
+    def _format_events_for_llm(self, events: List[object]) -> str:
+        lines = []
+        for idx, event in enumerate(events, start=1):
+            label = event.__class__.__name__
+            snippet = self._event_text(event)
+            if snippet:
+                snippet = snippet.replace("\n", "\\n")
+            else:
+                snippet = ""
+            lines.append(f"{idx}. {label}: {snippet}")
+        return "\n".join(lines)
+
+    def _evaluate_with_llm(
+        self,
+        turn: TurnConfig,
+        events: List[object],
+        patterns_met: bool,
+    ) -> bool:
+        cache_key = turn.id
+        cache_entry = self._llm_cache.get(cache_key)
+        event_count = len(events)
+
+        if cache_entry and cache_entry[0] == event_count:
+            return cache_entry[1]
+
+        if not patterns_met and event_count < 2:
+            return False
+
+        transcript = self._format_events_for_llm(events)
+        prompt = (
+            "You are evaluating whether an AI assistant completed a specific instruction.\n"
+            "Answer strictly with 'yes' or 'no'.\n\n"
+            f"Instruction:\n{turn.instruction.strip()}\n\n"
+            f"Agent trajectory:\n{transcript}\n\n"
+            "Question: Did the agent execute the instruction as written?"
+        )
+
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4.1",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a strict judge for instruction completion. Only respond yes or no.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+            )
+            answer = response.choices[0].message.content.strip().lower()
+            result = answer.startswith("yes")
+        except Exception as exc:
+            logger.error("LLM evaluation failed for %s: %s", turn.id, exc)
+            result = patterns_met
+
+        self._llm_cache[cache_key] = (event_count, result)
+        return result
+
+
+class SingleTurnUser:
     def __init__(self, runtime: Runtime):
         self.runtime = runtime
         self.turns = 0
@@ -60,7 +301,7 @@ class FakeUser:
             'IMPORTANT: YOU SHOULD NEVER ASK FOR HUMAN HELP.\n'
             'If you want to give up, run: <execute_bash> exit </execute_bash>.\n'
         )
-        
+
     def _read_task_file(self):
         """Read the task.md file to give context to the simulated user."""
         try:
@@ -73,7 +314,7 @@ class FakeUser:
             logger.error(f"Failed to read task file: {e}")
             return "Task content unavailable"
 
-    def generate_reply(self, question):
+    def generate_reply(self, question: MessageAction) -> str:
         if self.turns > 3:
             return self.msg
         self.chat_history.append({'role': 'user', 'content': question.content})
@@ -86,30 +327,38 @@ class FakeUser:
         self.turns += 1
         return reply
 
+
+TURN_STATE: Dict[str, Optional[object]] = {
+    "manager": None,
+    "single_user": None,
+}
+
 def codeact_user_response(state: State) -> str:
     """Function to provide fake user responses in the CodeAct framework."""
 
-    # Initialize FakeUser if it doesn't exist yet
-    global fake_user
-    if 'fake_user' not in globals():
-        fake_user = FakeUser(runtime)
-    
     # Get the last agent message
     last_agent_msg = None
     for event in reversed(state.history):
         if isinstance(event, MessageAction):
             last_agent_msg = event
             break
-    msg = (
-            'Please continue working on the task on whatever approach you think is suitable.\n'
-            'If you think you have solved the task, please finish the interaction.\n'
-            'IMPORTANT: YOU SHOULD NEVER ASK FOR HUMAN HELP.\n'
-            'If you want to give up, run: <execute_bash> exit </execute_bash>.\n'
-    )    
+
+    turn_manager = TURN_STATE.get("manager")  # type: Optional[TurnManager]
+    if isinstance(turn_manager, TurnManager) and turn_manager.enabled:
+        return turn_manager.handle_message(state, last_agent_msg)
+
+    single_turn_user = TURN_STATE.get("single_user")  # type: Optional[SingleTurnUser]
+    if not isinstance(single_turn_user, SingleTurnUser):
+        runtime_obj = TURN_STATE.get("runtime")
+        if not runtime_obj:
+            raise RuntimeError("Runtime not found in TURN_STATE. This should not happen.")
+        single_turn_user = SingleTurnUser(runtime_obj)
+        TURN_STATE["single_user"] = single_turn_user
+
     if not last_agent_msg:
-        return msg
-    
-    return fake_user.generate_reply(last_agent_msg)
+        return single_turn_user.msg
+
+    return single_turn_user.generate_reply(last_agent_msg)
 
 # FIXME: workspace mount path
 def get_config(
@@ -179,14 +428,107 @@ def load_dependencies(runtime: Runtime) -> List[str]:
         dependencies = []
     return dependencies
 
+def load_turn_manager(task_path: str) -> Optional[TurnManager]:
+    """
+    Inspect the task directory to see if it contains a multi-turn manifest.
+    """
+    manifest_path = os.path.join(task_path, "turns.yml")
+    if not os.path.exists(manifest_path):
+        return None
+
+    try:
+        with open(manifest_path, "r") as f:
+            manifest: Dict = yaml.safe_load(f) or {}
+    except Exception as exc:
+        logger.error("Failed to load turns manifest from %s: %s", manifest_path, exc)
+        return None
+
+    raw_turns = manifest.get("turns", [])
+    if not raw_turns:
+        logger.warning("turns.yml found at %s but contains no turns", manifest_path)
+        return None
+
+    turns: List[TurnConfig] = []
+    for idx, entry in enumerate(raw_turns):
+        instruction_file = entry.get("instruction_file")
+        if not instruction_file:
+            logger.warning("Turn %s missing instruction_file, skipping", entry.get("id", idx))
+            continue
+
+        instruction_path = os.path.join(task_path, instruction_file)
+        if not os.path.exists(instruction_path):
+            logger.warning("Instruction file %s not found for turn %s", instruction_path, entry.get("id", idx))
+            continue
+
+        with open(instruction_path, "r") as instr_f:
+            instruction_text = instr_f.read().strip()
+
+        turns.append(
+            TurnConfig(
+                id=entry.get("id", f"turn-{idx+1}"),
+                instruction=instruction_text,
+                checkpoint_id=entry.get("checkpoint_id"),
+                max_steps=entry.get("max_steps", 10),
+                success_patterns=entry.get("success_patterns", []) or [],
+                use_llm=entry.get("llm_check", False),
+            )
+        )
+
+    if not turns:
+        logger.warning("No valid turns found in %s", manifest_path)
+        return None
+
+    intro_path = os.path.join(task_path, "task-intro.md")
+    intro_text = ""
+    if os.path.exists(intro_path):
+        with open(intro_path, "r") as f:
+            intro_text = f.read().strip()
+
+    return TurnManager(intro_text, turns)
+
+
+def read_host_dependencies(task_path: str) -> List[str]:
+    dep_path = os.path.join(task_path, "utils", "dependencies.yml")
+    if not os.path.exists(dep_path):
+        return []
+    try:
+        with open(dep_path, "r") as f:
+            deps = yaml.safe_load(f)
+        return deps or []
+    except Exception as exc:
+        logger.warning("Failed to read dependencies from %s: %s", dep_path, exc)
+        return []
+
+
+def reset_services(hostname: str, dependencies: List[str]):
+    if not dependencies:
+        return
+
+    base_url = f"http://{hostname}:2999/api"
+    for dep in set(dependencies):
+        endpoint = SERVICE_RESET_ENDPOINTS.get(dep)
+        if not endpoint:
+            continue
+        url = f"{base_url}/{endpoint}"
+        try:
+            logger.info("Resetting service %s via %s", dep, url)
+            response = requests.post(url, timeout=120)
+            if response.status_code != 200:
+                logger.warning("Reset %s returned status %s: %s", dep, response.status_code, response.text)
+        except Exception as exc:
+            logger.error("Failed to reset %s: %s", dep, exc)
+
 def init_task_env(runtime: Runtime, hostname: str, env_llm_config: LLMConfig, task_path: str):
     # copy ./utils to /utils
     utils_path = os.path.join(task_path, 'utils/')
     runtime.copy_to(host_src=utils_path, sandbox_dest='/utils/', recursive=True)
     
-    # copy ./workspace to /workspace
+    # copy ./workspace to /workspace (if it exists)
     workspace_path = os.path.join(task_path, 'workspace/')
-    runtime.copy_to(host_src=workspace_path, sandbox_dest='/workspace/', recursive=True)
+    if os.path.exists(workspace_path):
+        runtime.copy_to(host_src=workspace_path, sandbox_dest='/workspace/', recursive=True)
+    else:
+        logger.warning(f"workspace directory not found at {workspace_path}, skipping copy.")
 
     # copy scenarios.json to /npc
     scenarios_path = os.path.join(task_path, 'scenarios.json')
@@ -198,7 +540,10 @@ def init_task_env(runtime: Runtime, hostname: str, env_llm_config: LLMConfig, ta
 
     # copy task.md to /instruction/
     task_md_path = os.path.join(task_path, 'task.md')
-    runtime.copy_to(host_src=task_md_path, sandbox_dest='/instruction/', recursive=False)
+    if os.path.exists(task_md_path):
+        runtime.copy_to(host_src=task_md_path, sandbox_dest='/instruction/', recursive=False)
+    else:
+        logger.warning(f"task.md not found at {task_md_path}, skipping copy to /instruction/.")
     
     # encrypt the evaluator.py file
     command = f"python /utils/encrypt.py && rm /utils/evaluator.py /utils/encrypt.py"
@@ -222,10 +567,18 @@ def init_task_env(runtime: Runtime, hostname: str, env_llm_config: LLMConfig, ta
 def run_solver(runtime: Runtime, task_name: str, config: AppConfig, dependencies: List[str],
                save_final_state: bool, state_dir: str,
                save_screenshots: bool, screenshots_dir: str) -> State:
-    instruction = "Complete the task provided in /instruction/task.md"
+    turn_manager = TURN_STATE.get("manager")  # type: Optional[TurnManager]
+
+    instruction_parts: List[str] = []
+    if isinstance(turn_manager, TurnManager) and turn_manager.enabled:
+        instruction_parts.append(turn_manager.initial_message())
+    else:
+        instruction_parts.append("Complete the task provided in /instruction/task.md")
 
     if 'gitlab' in dependencies:
-        instruction += "\n\nGitlab username is 'root' and password is 'theagentcompany'"
+        instruction_parts.append("Gitlab username is 'root' and password is 'theagentcompany'")
+
+    instruction = "\n\n".join(part.strip() for part in instruction_parts if part).strip()
 
     state: State | None = asyncio.run(
         run_controller(
@@ -256,9 +609,30 @@ def run_solver(runtime: Runtime, task_name: str, config: AppConfig, dependencies
 
     return state
 
-def run_evaluator(runtime: Runtime, env_llm_config: LLMConfig, trajectory_path: str, result_path: str):
-    action = CmdRunAction(command="C-c")
-    obs = runtime.run_action(action)
+def run_evaluator(runtime: Runtime, env_llm_config: LLMConfig, trajectory_path: str, result_path: str) -> bool:
+    """
+    Run the evaluator script in the runtime environment.
+    
+    Returns:
+        bool: True if evaluator succeeded, False otherwise
+    """
+    def _flush_shell() -> bool:
+        """
+        Attempt to ensure the runtime shell is ready to accept a new command.
+        Sends a combination of Ctrl-C and empty inputs with `is_input=True`.
+        """
+        for _ in range(3):
+            # Try sending Ctrl-C to interrupt any running process
+            runtime.run_action(CmdRunAction(command="C-c", is_input=True))
+            # Follow up with an empty input; if the previous command is gone,
+            # we should receive a normal prompt (exit_code != -1)
+            obs = runtime.run_action(CmdRunAction(command="", is_input=True))
+            if getattr(obs, "exit_code", 0) != -1:
+                return True
+        return False
+
+    if not _flush_shell():
+        logger.warning("Unable to flush runtime shell before evaluator; evaluator will likely fail")
 
     command = (
         f"LITELLM_API_KEY={env_llm_config.api_key} "
@@ -274,7 +648,12 @@ def run_evaluator(runtime: Runtime, env_llm_config: LLMConfig, trajectory_path: 
     obs = runtime.run_action(action)
     logger.info(obs, extra={'msg_type': 'OBSERVATION'})
     if obs.exit_code != 0:
-        logger.error('evaluator.py failed with errors')
+        logger.error(f'evaluator.py failed with exit_code={obs.exit_code}')
+        if obs.exit_code == -1:
+            logger.error('Evaluator command was not executed (likely blocked by previous command)')
+        return False  # Return False if evaluator failed
+    
+    return True  # Return True if evaluator succeeded
 
 if __name__ == '__main__':
     parser = get_parser()
@@ -309,6 +688,11 @@ if __name__ == '__main__':
         default=None,
         help='LLM config for evaluation environment (NPC & llm-based evaluator)',
     )
+    parser.add_argument(
+        '--reset-services',
+        action='store_true',
+        help='Reset external services declared in utils/dependencies.yml before running the task',
+    )
     args, _ = parser.parse_known_args()
 
     if not args.task_path or not args.task_path.strip():
@@ -319,6 +703,11 @@ if __name__ == '__main__':
     # print(args.task_path, task_short_name)
     # exit()
     logger.info(f"Task path is {args.task_path}, short name is {task_short_name}")
+
+    host_dependencies = read_host_dependencies(args.task_path)
+
+    if args.reset_services:
+        reset_services(args.server_hostname, host_dependencies)
 
     # mount a temporary directory to pass trajectory from host to container, and to
     # pass the evaluation result from container to host
@@ -354,6 +743,15 @@ if __name__ == '__main__':
     config: AppConfig = get_config(args.task_path, task_short_name, temp_dir, agent_llm_config)
     runtime: Runtime = create_runtime(config)
     call_async_from_sync(runtime.connect)
+
+    turn_manager = load_turn_manager(args.task_path)
+    TURN_STATE["manager"] = turn_manager
+    TURN_STATE["single_user"] = None
+    TURN_STATE["runtime"] = runtime  # Make runtime accessible to codeact_user_response
+
+    if isinstance(turn_manager, TurnManager) and turn_manager.enabled:
+        logger.info("Loaded multi-turn manifest with %d turns for %s", len(turn_manager.turns), task_short_name)
+
     init_task_env(runtime, args.server_hostname, env_llm_config, args.task_path)
 
     dependencies = load_dependencies(runtime)
@@ -377,8 +775,23 @@ if __name__ == '__main__':
     trajectory_path = f'/outputs/traj_{task_short_name}.json'
     result_path = f'/outputs/eval_{task_short_name}.json'
 
-    run_evaluator(runtime, env_llm_config, trajectory_path, result_path)
+    evaluator_success = run_evaluator(runtime, env_llm_config, trajectory_path, result_path)
     runtime.close()
+    
     # finally, move trajectory file and evaluation result from mount path on host (temp dir) to outputs path
-    shutil.move(os.path.join(temp_dir, f'traj_{task_short_name}.json'), os.path.join(os.path.abspath(args.outputs_path), f'traj_{task_short_name}.json'))
-    shutil.move(os.path.join(temp_dir, f'eval_{task_short_name}.json'), os.path.join(os.path.abspath(args.outputs_path), f'eval_{task_short_name}.json'))
+    # Always move trajectory (it's created by OpenHands)
+    traj_src = os.path.join(temp_dir, f'traj_{task_short_name}.json')
+    traj_dst = os.path.join(os.path.abspath(args.outputs_path), f'traj_{task_short_name}.json')
+    if os.path.exists(traj_src):
+        shutil.move(traj_src, traj_dst)
+    else:
+        logger.warning(f'Trajectory file not found at {traj_src}')
+    
+    # Only move evaluation result if evaluator succeeded
+    eval_src = os.path.join(temp_dir, f'eval_{task_short_name}.json')
+    eval_dst = os.path.join(os.path.abspath(args.outputs_path), f'eval_{task_short_name}.json')
+    if evaluator_success and os.path.exists(eval_src):
+        shutil.move(eval_src, eval_dst)
+        logger.info(f'Evaluation completed successfully')
+    else:
+        logger.warning(f'Evaluation file not created (evaluator_success={evaluator_success}, file_exists={os.path.exists(eval_src)})')
