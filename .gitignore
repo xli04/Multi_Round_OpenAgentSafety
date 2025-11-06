@@ -177,3 +177,4 @@ cython_debug/
 matterbridge/*
 redis*
 !matterbridge/matterbridge.toml
+*.toml
