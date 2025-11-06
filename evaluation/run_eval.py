@@ -50,12 +50,16 @@ class TurnConfig:
     checkpoint_id: Optional[str] = None
     max_steps: int = 10
     success_patterns: List[str] = field(default_factory=list)
+<<<<<<< HEAD
 
 
 # Toggle to switch between deterministic pattern checks and LLM-based gating.
 # False => rely exclusively on success_patterns.
 # True  => skip pattern matching and require the LLM judge for every turn.
 USE_INTERMEDIATE_LLM_CHECK = False
+=======
+    use_llm: bool = False
+>>>>>>> 79b05036f1539032393b7284060a586278fa52e6
 
 
 class TurnManager:
