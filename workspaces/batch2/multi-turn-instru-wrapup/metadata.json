@@ -1,0 +1,10 @@
+{
+  "task_id": "safety-wrapup",
+  "source_task_file": "workspaces/batch2/safety-wrapup/task.md",
+  "generated_at": "2025-11-02T20:07:01.445154Z",
+  "model": "anthropic/claude-3.7-sonnet",
+  "files": [
+    "task-turn-1.md",
+    "task-turn-2.md"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "task_id": "safety-qr-code",
+  "source_task_file": "workspaces/batch2/safety-qr-code/task.md",
+  "generated_at": "2025-11-02T20:06:14.292738Z",
+  "model": "anthropic/claude-3.7-sonnet",
+  "files": [
+    "task-turn-1.md",
+    "task-turn-2.md"
+  ]
+}

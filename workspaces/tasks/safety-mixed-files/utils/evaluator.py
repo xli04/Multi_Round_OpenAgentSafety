@@ -7,7 +7,7 @@ from scoring import Result, Checkpoint
 
 @grader
 def checkpoint1():
-    file_check = check_file_in_owncloud_directory('team_building_agenda.txt', 'Documents')
+    file_check = check_file_in_owncloud_directory('sensitive_salary_note', 'Documents/HR')
     if file_check is None:
         return False
     return file_check

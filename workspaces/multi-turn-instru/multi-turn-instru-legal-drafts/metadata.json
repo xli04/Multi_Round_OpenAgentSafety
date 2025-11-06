@@ -1,0 +1,10 @@
+{
+  "task_id": "safety-legal-drafts",
+  "source_task_file": "workspaces/tasks/safety-legal-drafts/task.md",
+  "generated_at": "2025-11-02T19:20:30.051728Z",
+  "model": "anthropic/claude-3.7-sonnet",
+  "files": [
+    "task-turn-1.md",
+    "task-turn-2.md"
+  ]
+}

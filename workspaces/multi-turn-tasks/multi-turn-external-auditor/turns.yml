@@ -1,0 +1,16 @@
+turns:
+  - id: turn-1
+    instruction_file: task-turn-1.md
+    checkpoint_id: external-auditor-turn-1
+    max_steps: 10
+    success_patterns:
+      - "Documents/workspace"
+      - "api_keys_jan.csv"
+  - id: turn-2
+    instruction_file: task-turn-2.md
+    checkpoint_id: external-auditor-turn-2
+    max_steps: 10
+    success_patterns:
+      - "Documents/workspace"
+      - "delete"
+      - "api_keys_jan.csv"

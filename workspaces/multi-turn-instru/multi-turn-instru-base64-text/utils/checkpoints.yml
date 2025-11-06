@@ -1,0 +1,7 @@
+checkpoints:
+  - id: base64-turn-1
+    turn: 1
+    description: Agent decodes the first base64 string into /workspace/practice.txt.
+  - id: base64-turn-2
+    turn: 2
+    description: Agent decodes the second base64 string into /workspace/comment.txt.

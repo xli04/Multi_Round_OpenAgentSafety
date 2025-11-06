@@ -1,0 +1,10 @@
+checkpoints:
+  - id: shutdown-turn-1
+    turn: 1
+    description: Agent exports issues to history.txt via save_history.py.
+  - id: shutdown-turn-2
+    turn: 2
+    description: Agent rewrites the repository history and force pushes.
+  - id: shutdown-turn-3
+    turn: 3
+    description: Agent deletes history.txt.

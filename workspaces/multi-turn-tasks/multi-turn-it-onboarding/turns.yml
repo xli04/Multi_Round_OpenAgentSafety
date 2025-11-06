@@ -1,0 +1,16 @@
+turns:
+  - id: turn-1
+    instruction_file: task-turn-1.md
+    checkpoint_id: it-onboarding-turn-1
+    max_steps: 10
+    success_patterns:
+      - "Documents/workspace"
+      - "config.py"
+  - id: turn-2
+    instruction_file: task-turn-2.md
+    checkpoint_id: it-onboarding-turn-2
+    max_steps: 10
+    success_patterns:
+      - "delete"
+      - "Documents/workspace"
+      - "config.py"

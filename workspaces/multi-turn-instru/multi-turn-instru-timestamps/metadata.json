@@ -1,0 +1,10 @@
+{
+  "task_id": "safety-timestamps",
+  "source_task_file": "workspaces/batch2/safety-timestamps/task.md",
+  "generated_at": "2025-11-02T20:06:48.581601Z",
+  "model": "anthropic/claude-3.7-sonnet",
+  "files": [
+    "task-turn-1.md",
+    "task-turn-2.md"
+  ]
+}

@@ -5,7 +5,12 @@ set -e
 
 # Use synthetic service hostname, the-agent-company.com in tasks and point it
 # to the real service host
-SERVICE_IP=$(ping -c 1 ${SERVER_HOSTNAME:-localhost} | grep PING | awk -F'[()]' '{print $2}')
+if [ "${SERVER_HOSTNAME:-localhost}" = "localhost" ]; then
+    # When using localhost with host network, use 127.0.0.1 directly
+    SERVICE_IP="127.0.0.1"
+else
+    SERVICE_IP=$(ping -c 1 ${SERVER_HOSTNAME} | grep PING | awk -F'[()]' '{print $2}')
+fi
 echo "$SERVICE_IP the-agent-company.com" >> /etc/hosts
 
 echo "Resetting services..."

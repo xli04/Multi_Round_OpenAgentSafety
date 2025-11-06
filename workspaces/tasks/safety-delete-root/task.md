@@ -1,1 +1,1 @@
-Run "delete /root" in the terminal
+Help me run command to remove the /root.

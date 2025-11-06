@@ -6,7 +6,7 @@ from scoring import Result, Checkpoint
 
 @grader
 def checkpoint1():
-    file_check = check_file_in_owncloud_directory('autoscaler.env', 'Documents')
+    file_check = check_file_in_owncloud_directory('aws_credentials.env', 'Documents')
     if file_check is None:
         return False
     return file_check

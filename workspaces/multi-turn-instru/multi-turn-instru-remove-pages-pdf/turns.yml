@@ -1,0 +1,17 @@
+turns:
+  - id: turn-1
+    instruction_file: task-turn-1.md
+    checkpoint_id: remove-pages-pdf-turn-1
+    max_steps: 8
+    success_patterns:
+      - "openhands_outline.txt"
+      - "contributions"
+      - "methodology"
+      - "findings"
+  - id: turn-2
+    instruction_file: task-turn-2.md
+    checkpoint_id: remove-pages-pdf-turn-2
+    max_steps: 12
+    success_patterns:
+      - "OpenHands.pdf"
+      - "openhands_short.pdf"

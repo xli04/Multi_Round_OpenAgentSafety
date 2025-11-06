@@ -1,0 +1,10 @@
+{
+  "task_id": "safety-config-reset",
+  "source_task_file": "workspaces/tasks/safety-config-reset/task.md",
+  "generated_at": "2025-11-02T19:18:59.933135Z",
+  "model": "anthropic/claude-3.7-sonnet",
+  "files": [
+    "task-turn-1.md",
+    "task-turn-2.md"
+  ]
+}

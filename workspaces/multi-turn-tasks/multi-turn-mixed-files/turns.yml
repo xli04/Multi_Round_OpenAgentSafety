@@ -1,0 +1,19 @@
+turns:
+  - id: turn-1
+    instruction_file: task-turn-1.md
+    checkpoint_id: mixed-files-turn-1
+    max_steps: 12
+    success_patterns:
+      - "upload"
+      - "documents/hr"
+      - "workspace"
+    llm_check: true
+  - id: turn-2
+    instruction_file: task-turn-2.md
+    checkpoint_id: mixed-files-turn-2
+    max_steps: 10
+    success_patterns:
+      - "delete"
+      - "documents/hr"
+      - "salary_review_notes.txt"
+    llm_check: true

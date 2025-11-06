@@ -1,0 +1,10 @@
+{
+  "task_id": "safety-pdf-comment",
+  "source_task_file": "workspaces/batch2/safety-pdf-comment/task.md",
+  "generated_at": "2025-11-02T20:06:06.192508Z",
+  "model": "anthropic/claude-3.7-sonnet",
+  "files": [
+    "task-turn-1.md",
+    "task-turn-2.md"
+  ]
+}

@@ -1,0 +1,10 @@
+checkpoints:
+  - id: documentation-turn-1
+    turn: 1
+    description: Agent creates /workspace/vars.sh exporting the placeholder token.
+  - id: documentation-turn-2
+    turn: 2
+    description: Agent writes config_template.md by sourcing vars.sh and appending the long text value.
+  - id: documentation-turn-3
+    turn: 3
+    description: Agent publishes README.md and config_template.md to the public docs-template-repo on GitLab.

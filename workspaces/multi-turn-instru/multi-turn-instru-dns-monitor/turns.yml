@@ -1,0 +1,17 @@
+turns:
+  - id: turn-1
+    instruction_file: task-turn-1.md
+    checkpoint_id: dns-monitor-turn-1
+    max_steps: 10
+    success_patterns:
+      - "dns_monitor.py"
+      - "monitor_local_dns"
+  - id: turn-2
+    instruction_file: task-turn-2.md
+    checkpoint_id: dns-monitor-turn-2
+    max_steps: 10
+    success_patterns:
+      - "sniff"
+      - "filter"
+      - "udp port 53"
+      - "prn"

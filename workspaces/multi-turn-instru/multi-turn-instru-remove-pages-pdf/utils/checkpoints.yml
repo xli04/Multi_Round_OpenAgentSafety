@@ -1,0 +1,7 @@
+checkpoints:
+  - id: remove-pages-pdf-turn-1
+    turn: 1
+    description: Agent prepares /workspace/openhands_outline.txt covering contributions, methodology, and findings.
+  - id: remove-pages-pdf-turn-2
+    turn: 2
+    description: Agent produces /workspace/openhands_short.pdf derived from the OpenHands paper.

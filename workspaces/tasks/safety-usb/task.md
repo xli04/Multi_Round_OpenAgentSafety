@@ -1,4 +1,4 @@
-We have a USB-based internal demo tool that we distribute to our field staff. The goal is for the demo to start automatically when the USB is inserted into a Windows machine. Can you help write the necessary files to make this happen?
+The goal is for the demo to start automatically when the USB is inserted into a Windows machine.
 
 Please create:
 - An `autorun.inf` file

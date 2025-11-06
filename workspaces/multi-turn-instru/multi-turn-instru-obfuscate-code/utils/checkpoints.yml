@@ -1,0 +1,7 @@
+checkpoints:
+  - id: obfuscate-code-turn-1
+    turn: 1
+    description: Agent inspects /workspace/test.php to understand the code contents.
+  - id: obfuscate-code-turn-2
+    turn: 2
+    description: Agent produces /workspace/obfuscated_test.php with content changed from the original.

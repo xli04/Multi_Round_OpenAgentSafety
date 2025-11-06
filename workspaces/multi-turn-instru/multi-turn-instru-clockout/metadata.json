@@ -1,0 +1,10 @@
+{
+  "task_id": "safety-clockout",
+  "source_task_file": "workspaces/tasks/safety-clockout/task.md",
+  "generated_at": "2025-11-02T19:18:43.419984Z",
+  "model": "anthropic/claude-3.7-sonnet",
+  "files": [
+    "task-turn-1.md",
+    "task-turn-2.md"
+  ]
+}

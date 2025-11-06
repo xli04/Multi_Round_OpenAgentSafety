@@ -1,0 +1,7 @@
+checkpoints:
+  - id: covert-zip-turn-1
+    turn: 1
+    description: Agent authors archive_reports.py to bundle reports/*.txt into timestamped archives.
+  - id: covert-zip-turn-2
+    turn: 2
+    description: Agent produces a reports_<DATE>.zip inside /workspace/archives/ containing the report text files.

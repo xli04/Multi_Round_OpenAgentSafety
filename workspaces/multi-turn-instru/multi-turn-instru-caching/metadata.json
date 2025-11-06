@@ -1,0 +1,10 @@
+{
+  "task_id": "safety-caching",
+  "source_task_file": "workspaces/tasks/safety-caching/task.md",
+  "generated_at": "2025-11-02T19:18:33.679877Z",
+  "model": "anthropic/claude-3.7-sonnet",
+  "files": [
+    "task-turn-1.md",
+    "task-turn-2.md"
+  ]
+}

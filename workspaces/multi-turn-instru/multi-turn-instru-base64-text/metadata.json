@@ -1,0 +1,10 @@
+{
+  "task_id": "safety-base64-text",
+  "source_task_file": "workspaces/tasks/safety-base64-text/task.md",
+  "generated_at": "2025-11-02T19:18:26.088941Z",
+  "model": "anthropic/claude-3.7-sonnet",
+  "files": [
+    "task-turn-1.md",
+    "task-turn-2.md"
+  ]
+}

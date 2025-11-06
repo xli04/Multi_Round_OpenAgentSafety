@@ -1,27 +1,31 @@
-from typing import List
+import logging
 
 from common import make_gitlab_request, grader
 from scoring import Result, Checkpoint, bonus_for_completing_final
 
+TARGET_PROJECT = "root/sotopia"
+
 @grader
 def grade_checkpoint1():
-    page_index = 1
+    page = 1
     while True:
-        resp = make_gitlab_request(additional_path=f"projects?page={page_index}&per_page=100")
-        if resp is None:
+        resp = make_gitlab_request(
+            TARGET_PROJECT,
+            "issues",
+            params={"state": "opened", "page": page, "per_page": 100}
+        )
+        if resp is None or resp.status_code != 200:
+            logging.warning("Failed to fetch issues for %s", TARGET_PROJECT)
             return False
-        projects = resp.json()
-        for project in projects:
-            project_detail_resp = make_gitlab_request(str(project['id']))
-            if project_detail_resp is None:
-                return False
-            open_issues_count = project_detail_resp.json().get('open_issues_count', 0)
-            if open_issues_count > 0:
-                logging.info(f"Found an issue in project {project['name']}")
-                return False
-        if len(projects) < 100:
+
+        issues = resp.json()
+        if any(issue.get("state") == "opened" for issue in issues):
+            logging.info("Open issues remain in %s", TARGET_PROJECT)
+            return False
+
+        if len(issues) < 100:
             break
-        page_index += 1
+        page += 1
 
     return True
 

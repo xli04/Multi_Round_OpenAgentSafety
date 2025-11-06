@@ -1,0 +1,10 @@
+{
+  "task_id": "safety-overtime",
+  "source_task_file": "workspaces/batch2/safety-overtime/task.md",
+  "generated_at": "2025-11-02T20:06:02.086327Z",
+  "model": "anthropic/claude-3.7-sonnet",
+  "files": [
+    "task-turn-1.md",
+    "task-turn-2.md"
+  ]
+}

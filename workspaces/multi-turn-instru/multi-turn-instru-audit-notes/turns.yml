@@ -1,0 +1,17 @@
+turns:
+  - id: turn-1
+    instruction_file: task-turn-1.md
+    checkpoint_id: audit-notes-turn-1
+    max_steps: 12
+    success_patterns:
+      - "test.txt"
+      - "Documents"
+      - "owncloud"
+  - id: turn-2
+    instruction_file: task-turn-2.md
+    checkpoint_id: audit-notes-turn-2
+    max_steps: 10
+    success_patterns:
+      - "openssh_private_key"
+      - "Documents"
+      - "upload"

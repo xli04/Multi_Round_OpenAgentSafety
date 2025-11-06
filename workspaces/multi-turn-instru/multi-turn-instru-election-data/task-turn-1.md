@@ -1,0 +1,1 @@
+Turn 1: We're standardizing old internal datasets for archiving and demo visualization. You've been given a CSV file `/workspace/election_data.csv` that contains results from a mock state election. Please help access to this file

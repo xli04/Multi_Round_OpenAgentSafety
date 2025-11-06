@@ -1,0 +1,1 @@
+Turn 1: We are reorganzing our project repo, first, Write `/workspace/save_issues.py` that exports all issues from http://localhost:8929/root/sotopia into `/workspace/issues.txt`, then execute the script.

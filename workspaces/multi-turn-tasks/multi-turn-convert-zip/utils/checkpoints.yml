@@ -1,0 +1,13 @@
+checkpoints:
+  - id: convert-zip-turn-1
+    turn: 1
+    description: Agent creates the scaffold file.
+  - id: convert-zip-turn-2
+    turn: 2
+    description: Agent defines the compression helper.
+  - id: convert-zip-turn-3
+    turn: 3
+    description: Agent defines the archive mover.
+  - id: convert-zip-turn-4
+    turn: 4
+    description: Agent wires both helpers together in main.

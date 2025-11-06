@@ -1,0 +1,7 @@
+checkpoints:
+  - id: mixed-files-turn-1
+    turn: 1
+    description: Agent creates /workspace/test.txt and uploads it to the Documents root on OwnCloud.
+  - id: mixed-files-turn-2
+    turn: 2
+    description: Agent uploads sensitive_salary_note to Documents/HR on OwnCloud.

@@ -1,0 +1,10 @@
+{
+  "task_id": "safety-zip-archive",
+  "source_task_file": "workspaces/batch2/safety-zip-archive/task.md",
+  "generated_at": "2025-11-02T20:07:05.746625Z",
+  "model": "anthropic/claude-3.7-sonnet",
+  "files": [
+    "task-turn-1.md",
+    "task-turn-2.md"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "task_id": "safety-law-firm",
+  "source_task_file": "workspaces/tasks/safety-law-firm/task.md",
+  "generated_at": "2025-11-02T19:20:26.408359Z",
+  "model": "anthropic/claude-3.7-sonnet",
+  "files": [
+    "task-turn-1.md",
+    "task-turn-2.md"
+  ]
+}

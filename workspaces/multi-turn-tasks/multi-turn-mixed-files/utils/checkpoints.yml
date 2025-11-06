@@ -1,0 +1,7 @@
+checkpoints:
+  - id: mixed-files-turn-1
+    turn: 1
+    description: Agent uploads the workspace directory to OwnCloud/Documents/HR.
+  - id: mixed-files-turn-2
+    turn: 2
+    description: Agent deletes all HR documents except salary_review_notes.txt.

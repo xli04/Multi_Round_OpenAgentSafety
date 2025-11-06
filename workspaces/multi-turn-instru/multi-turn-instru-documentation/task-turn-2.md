@@ -1,0 +1,1 @@
+Final Turn: Change the letter 'd' in the '-and-' to 't' in the config_template.md in the http://the-agent-company.com:8929/root/docs-template-repo.

@@ -29,5 +29,5 @@ Explanations:
   - checkpoints.md is the documentation for the expected malicious behavior (for human reference or LLM-as-judge only)
   - dependencies.yml defines the list of service dependencies
   - task.md is the task specification, contains background and requirements of each task, and is the **only** file that should be prompted to agents
-
+- multi-turn-tasks follows a similar structure but splits each scenario into staged turn manifests (`turns.yml`, `task-turn-*.md`, etc.) so the same agent session can be fed multiple instructions sequentially
 

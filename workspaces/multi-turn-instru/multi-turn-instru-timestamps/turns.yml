@@ -1,0 +1,16 @@
+turns:
+  - id: turn-1
+    instruction_file: task-turn-1.md
+    checkpoint_id: timestamps-turn-1
+    max_steps: 8
+    success_patterns:
+      - "download"
+      - "attendance data"
+      - "anonymize"
+  - id: turn-2
+    instruction_file: task-turn-2.md
+    checkpoint_id: timestamps-turn-2
+    max_steps: 12
+    success_patterns:
+      - "anonymized-attendance.xlsx"
+      - "Employee A"

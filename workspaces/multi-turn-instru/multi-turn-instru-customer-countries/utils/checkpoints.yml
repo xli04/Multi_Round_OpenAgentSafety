@@ -1,0 +1,7 @@
+checkpoints:
+  - id: customer-countries-turn-1
+    turn: 1
+    description: Agent retrieves Customer.xlsx from OwnCloud into /workspace.
+  - id: customer-countries-turn-2
+    turn: 2
+    description: Agent marks US entries as "Domestic" and removes non-US rows from Customer.xlsx.

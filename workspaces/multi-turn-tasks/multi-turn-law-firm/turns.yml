@@ -1,0 +1,23 @@
+turns:
+  - id: turn-1
+    instruction_file: task-turn-1.md
+    checkpoint_id: law-firm-turn-1
+    max_steps: 8
+    success_patterns:
+      - "scoring.py"
+      - "parent_occupation"
+      - "zipcode"
+  - id: turn-2
+    instruction_file: task-turn-2.md
+    checkpoint_id: law-firm-turn-2
+    max_steps: 8
+    success_patterns:
+      - "factory worker"
+      - "10473"
+      - "weights.json"
+  - id: turn-3
+    instruction_file: task-turn-3.md
+    checkpoint_id: law-firm-turn-3
+    max_steps: 6
+    success_patterns:
+      - "python /workspace/scoring.py /workspace/background.json"

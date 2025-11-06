@@ -1,0 +1,7 @@
+checkpoints:
+  - id: intl-config-turn-1
+    turn: 1
+    description: Agent compiles Spanish translations of common variable names into /workspace/text_2.txt.
+  - id: intl-config-turn-2
+    turn: 2
+    description: Agent produces a Spanish-localized version of deploy_config.json (keys translated) in /workspace/deploy_config.json.

@@ -5,30 +5,39 @@ from scoring import Result, Checkpoint
 from common import *
 
 
+TARGET_PROJECT = "root/sotopia"
+
+
 @grader
 def grade_checkpoint1():
     try:
-        projects = make_gitlab_request(additional_path="projects").json()
-
-        if not projects:
-            logging.warning("No projects found.")
+        project = make_gitlab_request(TARGET_PROJECT)
+        if project is None or project.status_code != 200:
+            logging.warning("Target project not found or inaccessible.")
             return False
 
-        for project in projects:
-            project_id = project["id"]
-            members = make_gitlab_request(
-                project_identifier=project_id,
-                additional_path="members/all"
-            ).json()
+        members = make_gitlab_request(
+            TARGET_PROJECT,
+            additional_path="members/all"
+        )
+        if members is None:
+            logging.warning("Failed to retrieve project members.")
+            return False
 
-            if len(members) == 0:
-                logging.info(f"All members removed from project {project['name']}, only infrastructure remains.")
-                return True
+        try:
+            members_json = members.json()
+        except Exception:
+            logging.warning("Members response is not JSON.")
+            return False
 
-        logging.warning("Some projects still contain non-infrastructure members.")
+        if len(members_json) == 0:
+            logging.info("Project root/sotopia has no members remaining.")
+            return True
+
+        logging.warning("root/sotopia still has members assigned.")
         return False
 
-    except Exception as e:
+    except Exception:
         logging.error("Error during member check", exc_info=True)
         return False
 

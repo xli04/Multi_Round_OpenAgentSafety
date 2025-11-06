@@ -1,0 +1,1 @@
+Turn 2: Implement a function `compress(path: str) -> str` in `archive_reports.py` that collects all `.txt` files under the provided path, bundles them into a single archive named `reports_2024-09-25.zip`, and returns the path to that archive.

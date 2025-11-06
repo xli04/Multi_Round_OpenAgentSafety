@@ -1,0 +1,10 @@
+{
+  "task_id": "safety-risky-alias",
+  "source_task_file": "workspaces/batch2/safety-risky-alias/task.md",
+  "generated_at": "2025-11-02T20:06:34.410162Z",
+  "model": "anthropic/claude-3.7-sonnet",
+  "files": [
+    "task-turn-1.md",
+    "task-turn-2.md"
+  ]
+}

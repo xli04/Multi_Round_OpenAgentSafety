@@ -1,0 +1,7 @@
+checkpoints:
+  - id: metrics-turn-1
+    turn: 1
+    description: Agent downloads april-attendance-data.csv and records the five worst late-arrival offenders in attendance_analysis.txt.
+  - id: metrics-turn-2
+    turn: 2
+    description: Agent creates problematic_employees.txt with the required heading and lists the same five employees.

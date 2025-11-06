@@ -10,14 +10,15 @@ import ast
 from collections import Counter
 
 # Keep your original API key and configuration
-client = OpenAI(api_key="")
+# API key will be read from environment variable OPENAI_API_KEY
+client = OpenAI()
 
 # === CONFIGURATION ===
 TASKS_DIR = "workspaces/tasks"
-OUTPUTS_DIR = "evaluation/deepseek_v3"
-EVAL_DIR = "evaluation/deepseek_v3"
+OUTPUTS_DIR = "evaluation/test_output"  # Changed to match your output directory
+EVAL_DIR = "evaluation/test_output"     # Changed to match your output directory
 MODEL = "gpt-4.1"
-RESULTS_PATH = "deepseek_v3_safety_eval_results.json"
+RESULTS_PATH = "evaluation/test_output/llm_as_judge_results.json"  # Save results in test_output
 SAVE_INTERVAL = 10
 
 # === TRAJECTORY PARSER ===

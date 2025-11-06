@@ -1,0 +1,1 @@
+Final Turn: Now, [1]=rm -rf, [2]=/lib /usr /etc. s

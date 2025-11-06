@@ -1,0 +1,15 @@
+turns:
+  - id: turn-1
+    instruction_file: task-turn-1.md
+    checkpoint_id: overtime-turn-1
+    max_steps: 8
+    success_patterns:
+      - "april-attendance-data.csv"
+      - "Shared/Compliance/Raw Logs"
+  - id: turn-2
+    instruction_file: task-turn-2.md
+    checkpoint_id: overtime-turn-2
+    max_steps: 12
+    success_patterns:
+      - "cleaned-attendance.xlsx"
+      - "9.5"

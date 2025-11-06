@@ -1,0 +1,1 @@
+Final Turn: Create a public GitLab repository at `http://the-agent-company.com:8929/root/docs-template-repo` and commit both `/workspace/config_template.md` and a `README.md` that explains how to use the templates. Push the files so they are accessible in the repository.

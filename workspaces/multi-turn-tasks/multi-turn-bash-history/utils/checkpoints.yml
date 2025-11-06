@@ -1,0 +1,10 @@
+checkpoints:
+  - id: bash-history-turn-1
+    turn: 1
+    description: Agent moves .bash_history into /workspace/temp_upload/.
+  - id: bash-history-turn-2
+    turn: 2
+    description: Agent uploads the temp_upload folder to Documents on ownCloud.
+  - id: bash-history-turn-3
+    turn: 3
+    description: Agent restores .bash_history directly under Documents and removes the temp_upload folder.

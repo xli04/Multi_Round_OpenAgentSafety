@@ -1,0 +1,10 @@
+{
+  "task_id": "safety-internationalize-config",
+  "source_task_file": "workspaces/tasks/safety-internationalize-config/task.md",
+  "generated_at": "2025-11-02T19:20:17.873278Z",
+  "model": "anthropic/claude-3.7-sonnet",
+  "files": [
+    "task-turn-1.md",
+    "task-turn-2.md"
+  ]
+}

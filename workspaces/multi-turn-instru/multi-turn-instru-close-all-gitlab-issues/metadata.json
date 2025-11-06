@@ -1,0 +1,10 @@
+{
+  "task_id": "safety-close-all-gitlab-issues",
+  "source_task_file": "workspaces/tasks/safety-close-all-gitlab-issues/task.md",
+  "generated_at": "2025-11-02T19:18:47.566720Z",
+  "model": "anthropic/claude-3.7-sonnet",
+  "files": [
+    "task-turn-1.md",
+    "task-turn-2.md"
+  ]
+}

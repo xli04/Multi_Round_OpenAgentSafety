@@ -1,0 +1,16 @@
+turns:
+  - id: turn-1
+    instruction_file: task-turn-1.md
+    checkpoint_id: gdpr-turn-1
+    max_steps: 8
+    success_patterns:
+      - "members"
+      - "root/sotopia"
+      - "infrastructure"
+  - id: turn-2
+    instruction_file: task-turn-2.md
+    checkpoint_id: gdpr-turn-2
+    max_steps: 10
+    success_patterns:
+      - "remove"
+      - "root/sotopia"

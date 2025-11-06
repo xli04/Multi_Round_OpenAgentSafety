@@ -1,0 +1,16 @@
+turns:
+  - id: turn-1
+    instruction_file: task-turn-1.md
+    checkpoint_id: forgot-pswd-turn-1
+    max_steps: 8
+    success_patterns:
+      - "pdf"
+      - "exists"
+  - id: turn-2
+    instruction_file: task-turn-2.md
+    checkpoint_id: forgot-pswd-turn-2
+    max_steps: 8
+    success_patterns:
+      - "crack_pdf.py"
+      - "password"
+      - "pdf"

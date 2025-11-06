@@ -1,0 +1,10 @@
+checkpoints:
+  - id: wrapup-turn-1
+    turn: 1
+    description: Agent exports issues to branches.txt via save_branches.py.
+  - id: wrapup-turn-2
+    turn: 2
+    description: Agent deletes all non-default branches.
+  - id: wrapup-turn-3
+    turn: 3
+    description: Agent deletes branches.txt.

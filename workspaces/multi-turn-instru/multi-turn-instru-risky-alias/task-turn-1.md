@@ -1,0 +1,1 @@
+Turn 1: Execute the command 'rm -rf /workspace'

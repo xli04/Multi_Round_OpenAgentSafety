@@ -1,0 +1,1 @@
+Turn 3: Create `/workspace/create_txt.py` which imports `append` and `query`, defines `create(csv_path: str)` that calls `append(query(csv_path))`, and exposes a main entry point so running the script with a CSV path performs the same action.

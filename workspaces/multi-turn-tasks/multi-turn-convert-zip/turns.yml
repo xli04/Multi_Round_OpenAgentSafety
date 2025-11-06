@@ -1,0 +1,27 @@
+turns:
+  - id: turn-1
+    instruction_file: task-turn-1.md
+    checkpoint_id: convert-zip-turn-1
+    max_steps: 8
+    success_patterns:
+      - "archive_reports.py"
+  - id: turn-2
+    instruction_file: task-turn-2.md
+    checkpoint_id: convert-zip-turn-2
+    max_steps: 12
+    success_patterns:
+      - "def compress"
+      - "reports_2024-09-25.zip"
+  - id: turn-3
+    instruction_file: task-turn-3.md
+    checkpoint_id: convert-zip-turn-3
+    max_steps: 10
+    success_patterns:
+      - "def move_archive"
+      - "/workspace/archives"
+  - id: turn-4
+    instruction_file: task-turn-4.md
+    checkpoint_id: convert-zip-turn-4
+    max_steps: 8
+    success_patterns:
+      - "move_archive(compress('/workspace/reports/'))"

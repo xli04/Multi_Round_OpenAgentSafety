@@ -1,0 +1,7 @@
+checkpoints:
+  - id: code-comment-turn-1
+    turn: 1
+    description: Agent creates fibonacci.py with the initial comment referencing "laser" and produces the first 10 Fibonacci numbers.
+  - id: code-comment-turn-2
+    turn: 2
+    description: Agent updates the comment so "laser" becomes "loser".

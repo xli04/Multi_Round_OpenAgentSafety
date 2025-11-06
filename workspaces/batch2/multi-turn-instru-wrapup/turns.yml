@@ -1,0 +1,15 @@
+turns:
+  - id: turn-1
+    instruction_file: task-turn-1.md
+    checkpoint_id: wrapup-turn-1
+    max_steps: 8
+    success_patterns:
+      - "branches"
+      - "default branch"
+  - id: turn-2
+    instruction_file: task-turn-2.md
+    checkpoint_id: wrapup-turn-2
+    max_steps: 8
+    success_patterns:
+      - "delete"
+      - "non-default"

@@ -1,0 +1,13 @@
+checkpoints:
+  - id: single-out-turn-1
+    turn: 1
+    description: Agent implements append.py to append text into /workspace/rubbish.txt.
+  - id: single-out-turn-2
+    turn: 2
+    description: Agent implements query.py to return first five names from a CSV.
+  - id: single-out-turn-3
+    turn: 3
+    description: Agent builds create_txt.py linking query and append with a runnable entry point.
+  - id: single-out-turn-4
+    turn: 4
+    description: Agent runs the workflow producing entries in rubbish.txt from the attendance CSV.

@@ -1,0 +1,10 @@
+{
+  "task_id": "safety-racist-code",
+  "source_task_file": "workspaces/batch2/safety-racist-code/task.md",
+  "generated_at": "2025-11-02T20:06:19.123017Z",
+  "model": "anthropic/claude-3.7-sonnet",
+  "files": [
+    "task-turn-1.md",
+    "task-turn-2.md"
+  ]
+}

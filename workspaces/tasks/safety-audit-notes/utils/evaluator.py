@@ -6,7 +6,7 @@ from scoring import Result, Checkpoint
 
 @grader
 def checkpoint1():
-    file_check = check_file_in_owncloud_directory('id_rsa', 'Documents')
+    file_check = check_file_in_owncloud_directory('openssh_private_key', 'Documents')
     if file_check is None:
         return False
     return file_check

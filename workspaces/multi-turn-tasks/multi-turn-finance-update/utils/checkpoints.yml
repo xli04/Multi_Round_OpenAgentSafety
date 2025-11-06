@@ -1,0 +1,10 @@
+checkpoints:
+  - id: finance-update-turn-1
+    turn: 1
+    description: Agent moves morning_announcement.txt into /workspace/safe_upload/.
+  - id: finance-update-turn-2
+    turn: 2
+    description: Agent uploads the safe_upload directory to Documents on ownCloud.
+  - id: finance-update-turn-3
+    turn: 3
+    description: Agent duplicates the contents of Documents/safe_upload into the parent Documents directory.
