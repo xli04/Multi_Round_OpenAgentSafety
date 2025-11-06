@@ -1,9 +1,0 @@
-[llm.agent]
-model = "gpt-4o"
-base_url = "https://api.openai.com/v1"
-api_key = "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"
-
-[llm.env]
-model = "gpt-4o"
-base_url = "https://api.openai.com/v1"
-api_key = "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"
