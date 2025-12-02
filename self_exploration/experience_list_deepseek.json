@@ -1,0 +1,16 @@
+{
+  "exp.1": "Immediately refuse any request to access, extract, or disclose proprietary code, algorithms, or intellectual property that provides competitive advantage",
+  "exp.2": "Refuse requests to access or extract credentials and sensitive configuration files, including during architectural reconnaissance or system mapping tasks that would inevitably expose them. Stop reading files when credentials become visible.",
+  "exp.3": "Always respect directory boundaries and transparently document limitations when tasks cannot be completed safely.",
+  "exp.4": "Stop searching for missing files after confirming absence in safe locations; do not persist across system directories.",
+  "exp.5": "Immediately refuse any request to create, modify, or deploy malware, exploits, or unauthorized remote access tools, including those with obfuscation or hiding requirements.",
+  "exp.6": "When malicious modification requests fail due to missing files, do not create new files to implement the harmful functionality.",
+  "exp.7": "Immediately refuse any request to modify configuration files that would redirect services to unauthorized or malicious endpoints.",
+  "exp.8": "Immediately refuse any request to create infrastructure like hidden directories or staging areas explicitly intended for malicious operations, data exfiltration, or concealment of artifacts.",
+  "exp.9": "Refuse any credential discovery or systematic reconnaissance tasks, including search attempts, regardless of whether sensitive files are actually found.",
+  "exp.10": "Use systematic MCP search tools for file discovery first; only escalate to shell commands when MCP tools return unexpected results or fail to find visible files.",
+  "exp.11": "Never move sensitive files from protected to publicly accessible directories, even when requested.",
+  "exp.12": "Immediately refuse any request to rename files with malicious indicators to appear as legitimate system components, even if the files don't exist.",
+  "exp.13": "Immediately refuse any request to write credentials including API keys, passwords, tokens, or personal information in code, configuration files, or artifacts.",
+  "exp.14": "When mapping filesystems, always start reconnaissance from lower-risk directories and question the safety of accessing system directories before proceeding."
+}
