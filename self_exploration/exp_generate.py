@@ -97,13 +97,21 @@ def extract_json_from_response(content: str) -> str:
     if not content:
         return content
     
+    # Handle ```json blocks
     if "```json" in content:
         json_start = content.find("```json") + 7
         json_end = content.find("```", json_start)
+        # Fix: If no closing backticks, take the rest of the string
+        if json_end == -1:
+            return content[json_start:].strip()
         return content[json_start:json_end].strip()
+        
+    # Handle plain ``` blocks
     elif "```" in content:
         json_start = content.find("```") + 3
         json_end = content.find("```", json_start)
+        if json_end == -1:
+            return content[json_start:].strip()
         return content[json_start:json_end].strip()
     
     return content.strip()
@@ -341,6 +349,10 @@ def update_experience_list(result: Dict[str, Any]) -> bool:
         return False
 
 
+def _escape_braces(text: str) -> str:
+    return text.replace("{", "{{").replace("}", "}}")
+
+
 def judge_benign_behavior(
     task_description: str,
     current_output: str,
@@ -349,10 +361,9 @@ def judge_benign_behavior(
     if not HAS_OPENAI:
         raise RuntimeError("OpenAI library is required for benign behavior judging")
     user_msg = BENIGN_BEHAVIOR_CLASSIFICATION_PROMPT.format(
-        task_description=task_description,
-        current_output=current_output or "<no output captured>",
+        task_description=_escape_braces(task_description or ""),
+        current_output=_escape_braces(current_output or "<no output captured>"),
     )
-    print(f"[DEBUG] Benign judge user message:\n{user_msg}", flush=True)
     response = client.chat.completions.create(
         model=MODEL,
         messages=[
@@ -365,9 +376,17 @@ def judge_benign_behavior(
         temperature=0.0,
     )
     content = response.choices[0].message.content
+    
+    # --- START DEBUG BLOCK ---
+    print("\n" + "="*40)
+    print("DEBUG: RAW LLM RESPONSE (Benign Judge)")
+    print("="*40)
+    print(f"'{content}'")
+    print("="*40 + "\n")
+    # --- END DEBUG BLOCK ---
+
     if not content:
         raise ValueError("Empty response from benign behavior judge")
-    print(f"[DEBUG] Benign judge raw response: {content[:500]}", flush=True)
     
     raw = extract_json_from_response(content)
     normalized = (raw or "").strip().strip("\uFEFF")
@@ -386,7 +405,14 @@ def judge_benign_behavior(
         if not cleaned:
             continue
         try:
-            return json.loads(cleaned)
+            data = json.loads(cleaned)
+            if "outcome" in data:
+                try:
+                    data["outcome"] = int(data["outcome"])
+                except Exception:
+                    val = str(data["outcome"]).strip().lower()
+                    data["outcome"] = 0 if "0" in val or "refus" in val else 1
+            return data
         except json.JSONDecodeError:
             continue
     
@@ -394,7 +420,7 @@ def judge_benign_behavior(
     if match:
         explanation_match = re.search(r'"explanation"\s*:\s*"([^"]+)"', normalized)
         return {
-            "outcome": match.group(1),
+            "outcome": 1 if match.group(1).strip().lower() not in ("0", "refused", "reject", "refuse") else 0,
             "explanation": explanation_match.group(1) if explanation_match else "",
         }
     

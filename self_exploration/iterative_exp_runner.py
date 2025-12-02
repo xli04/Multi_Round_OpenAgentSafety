@@ -13,13 +13,14 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import shutil
 import subprocess
 import tempfile
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from exp_generate import (
     learn_from_task_state,
@@ -60,7 +61,7 @@ class BenignBaseline:
     success: Optional[bool]
     output: str
     description: str
-    outcome: Optional[str] = None
+    outcome: Optional[int] = None
 
 
 class LogprobTracker:
@@ -111,6 +112,46 @@ def read_task_description(task_dir: Path) -> str:
         return task_file.read_text()
     except Exception:
         return ""
+
+
+def extract_task_number(task_dir: Path) -> Optional[int]:
+    name = task_dir.name
+    if not name.startswith("task."):
+        return None
+    try:
+        return int(name.split(".", 1)[1])
+    except ValueError:
+        return None
+
+
+def archive_task_state(
+    task_dir: Path,
+    outputs_dir: Path,
+    run_counters: Dict[Tuple[int, str], int],
+    label: str,
+) -> None:
+    task_num = extract_task_number(task_dir)
+    if task_num is None:
+        return
+    key = (task_num, label)
+    run_counters[key] = run_counters.get(key, 0) + 1
+    suffix = f"_{label}_run.{run_counters[key]}"
+    artifacts = [
+        (
+            outputs_dir / f"state_task.{task_num}.json",
+            outputs_dir / f"state_task.{task_num}{suffix}.json",
+        ),
+        (
+            outputs_dir / f"summary_task.{task_num}.txt",
+            outputs_dir / f"summary_task.{task_num}{suffix}.txt",
+        ),
+    ]
+    for src, dst in artifacts:
+        if src.exists():
+            try:
+                shutil.copy(src, dst)
+            except Exception:
+                pass
 
 
 def load_generation_summary(summary_path: Path) -> Dict[str, Dict[str, List[TaskRecord]]]:
@@ -384,9 +425,13 @@ def run_task_with_cleanup(
     workdir: Path,
     experience_file: Path,
     max_attempts: int,
+    outputs_dir: Path,
+    run_counters: Dict[Tuple[int, str], int],
+    label: str,
 ) -> bool:
     """Run a task and perform cleanup regardless of outcome."""
     success = run_task(task_dir, base_cmd, workdir, experience_file, max_attempts)
+    archive_task_state(task_dir, outputs_dir, run_counters, label)
     cleanup_runtime_artifacts()
     remove_runtime_images()
     return success
@@ -398,6 +443,8 @@ def run_task_with_experience_dict(
     workdir: Path,
     experience_dict: Dict[str, str],
     args: argparse.Namespace,
+    run_counters: Dict[Tuple[int, str], int],
+    label: str,
 ) -> bool:
     """Run a task using a temporary experience file derived from a dict."""
     with temporary_experience_file(experience_dict, args.experience_file) as temp_exp:
@@ -407,6 +454,9 @@ def run_task_with_experience_dict(
             workdir=workdir,
             experience_file=temp_exp,
             max_attempts=args.max_attempts,
+            outputs_dir=args.output_dir,
+            run_counters=run_counters,
+            label=label,
         )
 
 
@@ -416,6 +466,8 @@ def run_benign_baseline(
     args: argparse.Namespace,
     base_cmd: list[str],
     workdir: Path,
+    run_counters: Dict[Tuple[int, str], int],
+    label: str,
 ) -> Optional[BenignBaseline]:
     if not benign_task:
         return None
@@ -427,13 +479,16 @@ def run_benign_baseline(
         workdir,
         args.experience_file,
         args.max_attempts,
+        outputs_dir=args.output_dir,
+        run_counters=run_counters,
+        label=label,
     )
     output = read_task_state_output(benign_task.task_number, args.output_dir)
     description = read_task_description(benign_task.path)
     return BenignBaseline(success=success, output=output, description=description)
 
 
-def classify_benign_outcome(baseline: BenignBaseline) -> Optional[str]:
+def classify_benign_outcome(baseline: BenignBaseline) -> Optional[int]:
     if not baseline or not baseline.output:
         return None
     try:
@@ -443,7 +498,11 @@ def classify_benign_outcome(baseline: BenignBaseline) -> Optional[str]:
         )
         outcome = judgement.get("outcome")
         if isinstance(outcome, str):
-            baseline.outcome = outcome.strip().lower()
+            outcome = int(outcome.strip())
+        if isinstance(outcome, bool):
+            outcome = int(outcome)
+        if isinstance(outcome, int):
+            baseline.outcome = 1 if outcome >= 1 else 0
         return baseline.outcome
     except Exception as exc:
         print(f"      ⚠ Benign outcome classification failed: {exc}")
@@ -457,6 +516,7 @@ def generate_variant_candidates(
     base_cmd: list[str],
     workdir: Path,
     total_variants: int,
+    run_counters: Dict[Tuple[int, str], int],
 ) -> List[VariantCandidate]:
     candidates: List[VariantCandidate] = []
     for idx in range(1, total_variants + 1):
@@ -468,6 +528,9 @@ def generate_variant_candidates(
             workdir,
             args.experience_file,
             args.max_attempts,
+            outputs_dir=args.output_dir,
+            run_counters=run_counters,
+            label=f"{harmful_task.task_number}_variant{idx}",
         )
         if not success:
             print("      Skipping variant due to task failure")
@@ -496,6 +559,7 @@ def filter_variants_by_benign(
     args: argparse.Namespace,
     base_cmd: list[str],
     workdir: Path,
+    run_counters: Dict[Tuple[int, str], int],
 ) -> List[VariantCandidate]:
     if not (args.benign_check and benign_task and baseline_data):
         return candidates
@@ -512,21 +576,30 @@ def filter_variants_by_benign(
             workdir,
             cand.experiences,
             args,
+            run_counters,
+            label=f"{cand.label}_benign_check",
         )
         current_output = read_task_state_output(benign_task.task_number, args.output_dir)
+        baseline_outcome = classify_benign_outcome(baseline_data)
         variant_baseline = BenignBaseline(benign_success, current_output, baseline_data.description)
         variant_outcome = classify_benign_outcome(variant_baseline)
-        if variant_outcome:
+        if variant_outcome is not None:
             cand.metadata["benign_outcome"] = variant_outcome
-        baseline_rank = BENIGN_OUTCOME_RANK.get(
-            baseline_data.outcome,
-            2 if baseline_data.success else 1 if baseline_data.success is False else 1,
-        )
-        variant_rank = BENIGN_OUTCOME_RANK.get(
-            variant_outcome,
-            2 if benign_success else 1 if benign_success is False else 1,
-        )
-        changed = variant_rank < baseline_rank
+        if baseline_outcome is None:
+            if baseline_data.success is True:
+                baseline_outcome = 1
+            elif baseline_data.success is False:
+                baseline_outcome = 0
+            else:
+                baseline_outcome = 1
+        if variant_outcome is None:
+            if benign_success is True:
+                variant_outcome = 1
+            elif benign_success is False:
+                variant_outcome = 0
+            else:
+                variant_outcome = 1
+        changed = variant_outcome < baseline_outcome
         if not changed:
             filtered.append(cand)
         else:
@@ -542,6 +615,7 @@ def score_variants_with_kl(
     workdir: Path,
     logprob_tracker: LogprobTracker,
     baseline_distribution: Dict[str, float],
+    run_counters: Dict[Tuple[int, str], int],
 ) -> List[VariantCandidate]:
     scored: List[VariantCandidate] = []
     logprob_tracker.sync()
@@ -557,6 +631,8 @@ def score_variants_with_kl(
             workdir,
             cand.experiences,
             args,
+            run_counters,
+            label=f"{cand.label}_kl",
         )
         if not success:
             print(f"      ✗ Unable to score {cand.label} (task failed)")
@@ -639,7 +715,7 @@ def main() -> None:
             harmful_lookup[harmful_task.task_number] = harmful_task
     all_harmful_tasks = sorted(task_to_function.keys())
 
-    benign_cache: Dict[str, BenignBaseline] = {}
+    run_counters: Dict[Tuple[int, str], int] = {}
     selection_count = 0
     current_function = None
 
@@ -652,25 +728,19 @@ def main() -> None:
             print("=" * 70)
 
         benign_task = function_to_benign.get(function_name)
-        if args.benign_check and benign_task and function_name not in benign_cache:
-            state_path = args.output_dir / f"state_task.{benign_task.task_number}.json"
-            if state_path.exists():
-                print(f"  → Using cached benign state for {function_name}")
-                output = read_task_state_output(benign_task.task_number, args.output_dir)
-                description = read_task_description(benign_task.path)
-                benign_cache[function_name] = BenignBaseline(None, output, description)
-            else:
-                print(f"  → Running benign baseline for {function_name}")
-                baseline = run_benign_baseline(
-                    benign_task,
-                    experiences,
-                    args,
-                    base_cmd,
-                    args.eval_dir,
-                )
-                benign_cache[function_name] = baseline or BenignBaseline(None, "", "")
-            classify_benign_outcome(benign_cache[function_name])
-        baseline_data = benign_cache.get(function_name)
+        baseline_data: Optional[BenignBaseline] = None
+        if args.benign_check and benign_task:
+            baseline_data = run_benign_baseline(
+                benign_task,
+                experiences,
+                args,
+                base_cmd,
+                args.eval_dir,
+                run_counters,
+                label=f"{function_name}_benign",
+            )
+            if baseline_data:
+                classify_benign_outcome(baseline_data)
 
         harmful_task = harmful_lookup[task_num]
         print(f"\n  → Processing harmful task.{harmful_task.task_number} ({harmful_task.harm})")
@@ -681,22 +751,25 @@ def main() -> None:
             base_cmd,
             args.eval_dir,
             total_variants,
+            run_counters,
         )
         if not candidates:
             print("    ⚠ No viable variants generated for this task")
             continue
 
-        candidates = filter_variants_by_benign(
-            candidates,
-            benign_task,
-            baseline_data,
-            args,
-            base_cmd,
-            args.eval_dir,
-        )
-        if not candidates:
-            print("    ⚠ All variants filtered out by benign check")
-            continue
+        if args.benign_check and benign_task and baseline_data:
+            candidates = filter_variants_by_benign(
+                candidates,
+                benign_task,
+                baseline_data,
+                args,
+                base_cmd,
+                args.eval_dir,
+                run_counters,
+            )
+            if not candidates:
+                print("    ⚠ All variants filtered out by benign check")
+                continue
 
         if kl_enabled:
             candidates = score_variants_with_kl(
@@ -707,6 +780,7 @@ def main() -> None:
                 args.eval_dir,
                 logprob_tracker,
                 baseline_distribution,
+                run_counters,
             )
             if not candidates:
                 print("    ⚠ Unable to score variants; skipping update")
@@ -738,8 +812,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-BENIGN_OUTCOME_RANK = {
-    "finished": 2,
-    "unfinished": 1,
-    "refused": 0,
-}

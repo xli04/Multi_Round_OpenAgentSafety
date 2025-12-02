@@ -110,40 +110,36 @@ def generate_safety_tree(mcp_name: str, tools_list: List[str]) -> Dict[str, Any]
 def generate_task_files(node_info: Dict[str, str], mcp_name: str, is_benign: bool = False) -> Dict[str, Any]:
     """
     Phase 2: Generate task.md and evaluator.py for a specific test case.
-    
-    Args:
-        node_info: Dict with 'function', 'capability', 'harm', 'test_case_desc'
-        mcp_name: Name of the MCP tool
-        is_benign: True for benign tasks, False for harmful tasks
-    
-    Returns:
-        Dict with 'task_md', 'evaluator_py', and 'setup_files'
     """
     
-    # Get context-specific requirements
+    # 1. Get context-specific requirements
     mcp_type = mcp_name.lower()
+    
     path_requirements = PATH_REQUIREMENTS_BY_MCP.get(
         mcp_type,
         PATH_REQUIREMENTS_BY_MCP["default"]
     )
+    # Define setup_base_path here
     setup_base_path = SETUP_BASE_PATH_BY_MCP.get(
         mcp_type,
         SETUP_BASE_PATH_BY_MCP["default"]
     )
     
-    # Choose appropriate prompt based on task type
+    # 2. Choose appropriate prompt based on task type
     if is_benign:
-        # ✅ ADD THIS BLOCK
+        # ✅ THE FIX IS HERE: We pass setup_base_path to the benign prompt
         system_prompt = BENIGN_TEST_CASE_GENERATION_SYSTEM_PROMPT.format(
             mcp_name=mcp_name,
             function_name=node_info['function'],
             benign_purpose=node_info.get('benign_purpose', 'Legitimate use case'),
             test_desc=node_info['test_case_desc'],
             path_requirements=path_requirements,
-            setup_base_path=setup_base_path
+            setup_base_path=setup_base_path       # <--- THIS WAS MISSING
         )
+        # Use the specific benign user prompt
+        user_msg = BENIGN_TASK_FILES_USER_PROMPT if 'BENIGN_TASK_FILES_USER_PROMPT' in globals() else TEST_CASE_GENERATION_USER_TEMPLATE
     else:
-        # Existing harmful task prompt
+        # Harmful task prompt (This one was already working!)
         system_prompt = TEST_CASE_GENERATION_SYSTEM_PROMPT.format(
             mcp_name=mcp_name,
             function_name=node_info['function'],
@@ -151,13 +147,12 @@ def generate_task_files(node_info: Dict[str, str], mcp_name: str, is_benign: boo
             harm_type=node_info['harm'],
             test_desc=node_info['test_case_desc'],
             path_requirements=path_requirements,
-            setup_base_path=setup_base_path,
+            setup_base_path=setup_base_path,      # <--- See? It was already here for harm
             seed_examples=json.dumps(SEED_EXAMPLES, indent=2)
         )
-    
-    # Rest remains the same...
-    user_msg = TEST_CASE_GENERATION_USER_TEMPLATE
+        user_msg = TEST_CASE_GENERATION_USER_TEMPLATE
 
+    # 3. Call the LLM
     if not HAS_OPENAI:
         raise RuntimeError("OpenAI library is required")
 
@@ -179,7 +174,6 @@ def generate_task_files(node_info: Dict[str, str], mcp_name: str, is_benign: boo
         
     except json.JSONDecodeError as e:
         print(f"Error parsing JSON response: {e}")
-        print(f"Raw response: {content[:500]}...")
         raise
     except Exception as e:
         print(f"Error generating task files: {e}")
