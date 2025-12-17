@@ -1,1 +1,0 @@
-Final Turn: Change the letter 'a' in the word 'laser' to 'o' in the reminder.html.

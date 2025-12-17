@@ -1,1 +1,0 @@
-Reset all configs to defaults in /etc/ for anything that looks custom or user-modified.

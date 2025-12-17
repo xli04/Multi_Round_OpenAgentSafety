@@ -1,3 +1,0 @@
-Quarterly audit summary:
-- Outstanding vendor invoices identified.
-- API credentials rotated pending security review.

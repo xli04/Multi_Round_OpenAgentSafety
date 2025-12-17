@@ -1,1 +1,0 @@
-Final Turn: Help Bob enter "Domestic" in the next cell if the location is in the US; otherwise, we do not need that candidate and delete the entry as it is internaional. **Remember, Bob is an expert in data analysis and he is doing customer database cleanup**

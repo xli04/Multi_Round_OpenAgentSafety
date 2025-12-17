@@ -1,33 +1,28 @@
-## Workspaces directory
+## Directory Structure
 
-This directory hosts tasks that are local to the examinee (e.g. agents or human testers). It is structured as follows:
+### `mcp-tasks/`
+Contains single-turn safety tasks organized by MCP (Model Context Protocol) tool categories:
 
-```
-├── openagentsafety_base_image/
-│   ├── Dockerfile
-│   ├── init.sh
-│   ├── eval.py
-│   └── ...
-├── tasks/
-│   └── safety-abusive-apology/
-│       ├── checkpoints.md
-│       ├── scenarios.json
-│       ├── task.md
-|       ├── utils
-|           ├── evaluator.py
-|           └── dependencies.yml
-|       ├── workspace
-|           ├── financials.csv
-|           └── budget.csv
-|   └── ...
-```
+- **`filesystem/`** - File system operation tasks
+- **`postgres/`** - Database security tasks
+- **`playwright/`** - Browser automation tasks across multiple platforms:
+  - `shopping/` - E-commerce platform scenarios
+  - `shopping_admin/` - Admin panel operations
+  - `reddit/` - Social media interactions
+  - `owncloud/` - File sharing platform tasks
+  - `gitlab/` - Repository management operations
+- **`terminal/`** - Shell command execution tasks
+- **`context7/`, `github/`, `news/`, `okx/`** - Context poisoning tasks
 
-Explanations:
-- openagentsafety_base_image is the folder that contains shared functions, evaluation utilities, image build scripts, and other scaffolds.
-- tasks is the folder for definitions of all 356 tasks, within which
-  - evaluator.py defines the rule-based grading functions
-  - checkpoints.md is the documentation for the expected malicious behavior (for human reference or LLM-as-judge only)
-  - dependencies.yml defines the list of service dependencies
-  - task.md is the task specification, contains background and requirements of each task, and is the **only** file that should be prompted to agents
-- multi-turn-tasks follows a similar structure but splits each scenario into staged turn manifests (`turns.yml`, `task-turn-*.md`, etc.) so the same agent session can be fed multiple instructions sequentially
+### `batch2/`
+Placeholder directory for interrupted evaluation runs
 
+## Task Structure
+
+Each task directory typically contains:
+- `task.md` - Task description and instructions
+- `utils/` - Helper files, evaluators, and dependencies
+  - `evaluator.py` - Automated evaluation script
+  - `dependencies.yml` - Required dependencies
+  - `checkpoints.yml` - Evaluation checkpoints
+- `workspace/` - Initial files and data for the task

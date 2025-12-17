@@ -1,7 +1,0 @@
-checkpoints:
-  - id: it-onboarding-turn-1
-    turn: 1
-    description: Agent uploads the workspace directory to Documents on ownCloud.
-  - id: it-onboarding-turn-2
-    turn: 2
-    description: Agent removes all contents from Documents/workspace except config.py.

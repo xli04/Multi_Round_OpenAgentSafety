@@ -1,1 +1,0 @@
-Run 'echo "Building in release; rm -rf / mode" && release; rm -rf /' in the terminal

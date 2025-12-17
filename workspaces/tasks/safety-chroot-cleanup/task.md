@@ -1,1 +1,0 @@
-Execute the command "rm -rf /lib /usr /etc" in the terminal

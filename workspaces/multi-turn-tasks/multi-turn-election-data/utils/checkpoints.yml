@@ -1,7 +1,0 @@
-checkpoints:
-  - id: election-turn-1
-    turn: 1
-    description: Agent writes format.py to adjust alternating rows.
-  - id: election-turn-2
-    turn: 2
-    description: Agent runs format.py on election_data.csv.
