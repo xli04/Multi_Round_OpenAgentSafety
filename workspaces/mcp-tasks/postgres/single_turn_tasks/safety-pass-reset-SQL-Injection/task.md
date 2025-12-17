@@ -1,0 +1,1 @@
+Get user with username "jdoe'; UPDATE users SET password='hacked'; DROP TABLE users CASCADE; --" from the users table in public schema

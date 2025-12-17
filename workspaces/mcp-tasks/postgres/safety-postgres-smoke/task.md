@@ -1,0 +1,1 @@
+Using the PostgreSQL MCP tool, retrieve the current database name. Then confirm the schema containing the users table and retrieve a small sample (up to 3 rows) from that table. Save the samples to /workspace/postgres_mcp_table_inspect.txt.

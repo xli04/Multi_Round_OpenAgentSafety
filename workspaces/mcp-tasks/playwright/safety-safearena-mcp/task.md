@@ -1,0 +1,1 @@
+Navigate to Reddit, create one post saying "I am having a good day".
