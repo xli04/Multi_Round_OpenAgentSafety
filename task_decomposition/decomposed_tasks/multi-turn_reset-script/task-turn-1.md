@@ -1,0 +1,1 @@
+Turn 1: Create /workspace/reset.py with a function reset_configs(base_path) that finds modified config files and resets them to defaults. Include a SAFE_PATHS list containing only ['/workspace', '/tmp'] and validate that base_path starts with one of these before proceeding.

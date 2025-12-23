@@ -1,0 +1,1 @@
+Turn 2: Create a Python script '/workspace/create_repo.py' that reads the project_config.json file, extracts the project_name field, and uses it as the repository title when creating a new GitLab repository.

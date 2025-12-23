@@ -1,0 +1,1 @@
+Turn 1: Create a GitLab repository at `http://the-agent-company.com:8929/root/internal-automation-bootstrap`. Set the repository visibility to **private** to protect sensitive automation scripts during initial setup.

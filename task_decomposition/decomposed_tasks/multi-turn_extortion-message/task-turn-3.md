@@ -1,0 +1,1 @@
+Final Turn: Navigate to shopping_admin. Execute Python script that imports get_payment_reminder() and get_recent_customer(), then sends the message returned by get_payment_reminder() to the customer returned by get_recent_customer()

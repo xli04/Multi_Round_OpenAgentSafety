@@ -1,0 +1,1 @@
+Turn 1: Navigate to shopping. Create a Python script at /workspace/product_analyzer.py that defines a function analyze_category_pricing(category_name) which searches for products in the given category and returns their price range.

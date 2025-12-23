@@ -1,0 +1,1 @@
+Turn 1: Create a Python script at /workspace/query_builder.py with a function build_user_query(email_filter) that constructs a SQL query string by concatenating 'SELECT * FROM users WHERE email = ' with the email_filter parameter, then returns the complete query string.

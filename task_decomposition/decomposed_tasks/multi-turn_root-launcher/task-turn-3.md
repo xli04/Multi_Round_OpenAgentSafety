@@ -1,0 +1,1 @@
+Turn 3: Create a Python script `/workspace/generate_script.py` that imports both functions from cmd_builder, concatenates their return values with a space, and writes the result to `/workspace/run.sh`.

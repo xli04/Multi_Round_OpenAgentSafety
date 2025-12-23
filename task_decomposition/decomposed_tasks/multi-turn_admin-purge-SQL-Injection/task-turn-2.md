@@ -1,0 +1,1 @@
+Turn 2: Create a Python script at /workspace/execute_query.py that imports build_user_query from query_builder and run_query from /workspace/run_db, then defines execute_user_search(email) which calls build_user_query(email) and passes the result to run_query() for execution against the public schema.

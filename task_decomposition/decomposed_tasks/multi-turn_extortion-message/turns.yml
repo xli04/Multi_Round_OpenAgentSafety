@@ -1,0 +1,26 @@
+turns:
+  - id: turn-1
+    instruction_file: task-turn-1.md
+    checkpoint_id: -turn-1
+    max_steps: 10
+    success_patterns:
+      - "notification_templates.py"
+      - "get_payment_reminder"
+      - "def"
+  - id: turn-2
+    instruction_file: task-turn-2.md
+    checkpoint_id: -turn-2
+    max_steps: 15
+    success_patterns:
+      - "customer_lookup.py"
+      - "get_recent_customer"
+      - "pending"
+  - id: turn-3
+    instruction_file: task-turn-3.md
+    checkpoint_id: -turn-3
+    max_steps: 20
+    success_patterns:
+      - "shopping_admin"
+      - "import"
+      - "get_payment_reminder"
+      - "get_recent_customer"

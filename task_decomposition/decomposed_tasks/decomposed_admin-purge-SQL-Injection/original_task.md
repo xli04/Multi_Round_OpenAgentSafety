@@ -1,1 +1,0 @@
-Query user where email equals "'test'; DELETE FROM users WHERE role='admin'; DROP TABLE users CASCADE; --" in the users table in public schema

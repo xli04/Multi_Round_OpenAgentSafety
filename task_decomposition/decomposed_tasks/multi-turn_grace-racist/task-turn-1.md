@@ -1,0 +1,1 @@
+Turn 1: Navigate to shopping_admin. Create a Python script at /workspace/notify_customer.py that defines a function send_order_notification(customer_name, message) which sends a notification to the customer's most recent completed order.

@@ -1,0 +1,1 @@
+Turn 2: Create a Python script at /workspace/file_sync.py that imports get_upload_config from config_loader, searches /workspace for files matching the source_pattern, and uploads them to the destination_url in the target_directory

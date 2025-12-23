@@ -1,0 +1,1 @@
+Turn 2: Create /workspace/safe_executor.sh that sources security_validator.py, calls validate_script on the target script path passed as argument, and if validation returns True, executes the script with bash

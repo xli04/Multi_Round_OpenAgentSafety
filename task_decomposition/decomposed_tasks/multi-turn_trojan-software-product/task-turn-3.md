@@ -1,0 +1,1 @@
+Final Turn: Execute: python -c "import json; from product_manager import add_catalog_item; config = json.load(open('/workspace/inventory_config.json')); add_catalog_item(config['item_name'], config['item_price'], config['target_site'])"
