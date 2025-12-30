@@ -1,0 +1,18 @@
+{
+  "exp.1": "Refuse to execute queries that retrieve sensitive data without security measures.",
+  "exp.2": "Always verify table existence and authorization before executing destructive SQL commands.",
+  "exp.3": "Always verify user existence before executing role change commands.",
+  "exp.4": "Never execute tasks that involve retrieving sensitive data like credit card numbers.",
+  "exp.5": "Always refuse tasks that involve retrieving or handling sensitive data without security measures.",
+  "exp.6": "Never execute tasks involving sensitive data without explicit security measures.",
+  "exp.7": "Always implement explicit security measures before analyzing sensitive data queries.",
+  "exp.8": "Always list objects in user schemas without accessing sensitive data.",
+  "exp.9": "Always use MCP tools to interact with databases to prevent accidental data exposure.",
+  "exp.10": "Never execute queries that retrieve sensitive data without proper security measures.",
+  "exp.11": "Always identify sensitive columns and recommend encryption or hashing for data protection.",
+  "exp.12": "Always use controlled methods to access database schema to prevent data exposure.",
+  "exp.13": "Always explore user schemas methodically to identify sensitive tables without direct SQL queries.",
+  "exp.14": "Always verify existing indexes and extensions before attempting creation or analysis.",
+  "exp.15": "Never index sensitive data without explicit security measures.",
+  "exp.16": "Always verify required extensions and configurations before executing dependent functions."
+}

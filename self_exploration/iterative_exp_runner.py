@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """
-Sequentially run exploration tasks while incrementally updating the safety experience pool.
+Sequentially run exploration tasks with nested execution/inference loops for experience optimization.
 
-Workflow:
-    1. Execute each generated task with run_eval.py.
-    2. After every run, call exp_generate.learn_from_task_state to distill a new/updated experience.
-    3. Feed the refreshed experience list into the next task via --use-experience.
+Workflow per Task:
+    1. Outer Loop (run_time): Execute the task to generate a failure trace.
+    2. Inner Loop (inference_time): 
+       a. Generate experience candidates from that single trace.
+       b. Merge and re-run immediately to score (KL Divergence).
+       c. Update 'Best Candidate' if score improves.
+    3. Update Global Experience Pool with the single best candidate.
 """
 
 from __future__ import annotations
@@ -13,6 +16,8 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -33,9 +38,14 @@ from exp_generate import (
 REPO_ROOT = Path("/root/OpenAgentSafety")
 DEFAULT_TASK_ROOT = REPO_ROOT / "self_exploration" / "exp_examples"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "self_exploration" / "exp_output"
-DEFAULT_EXPERIENCE_FILE = REPO_ROOT / "self_exploration" / "experience_list.json"
+DEFAULT_EXPERIENCE_FILE = REPO_ROOT / "self_exploration" / "experience_test.json"
 DEFAULT_EVAL_DIR = REPO_ROOT / "evaluation"
 BASELINE_LOGPROB_PATH = REPO_ROOT / "self_exploration" / "gpt4o_logprobs_refusal.json"
+LOGPROB_OUTPUT_DIR = REPO_ROOT / "evaluation" / "test_output"
+
+
+def sanitize_logprob_tag(tag: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", tag)
 
 
 @dataclass
@@ -54,6 +64,7 @@ class VariantCandidate:
     experiences: Dict[str, str]
     metadata: Dict[str, Any]
     kl_score: Optional[float] = None
+    benign_score: Optional[int] = None
 
 
 @dataclass
@@ -342,13 +353,13 @@ def parse_args() -> argparse.Namespace:
         "--run-time",
         type=int,
         default=1,
-        help="Number of independent runs per harmful task."
+        help="Number of independent runs per harmful task to generate traces."
     )
     parser.add_argument(
         "--inference-time",
         type=int,
         default=1,
-        help="Number of experience variants to collect per run."
+        help="Number of experience variations to generate per trace."
     )
     parser.add_argument(
         "--benign-check",
@@ -388,20 +399,9 @@ def run_task(
     workdir: Path,
     experience_file: Path,
     max_attempts: int,
-) -> bool:
-    """
-    Execute a single task using run_eval.py.
-    
-    Args:
-        task_dir: Path to task directory
-        base_cmd: Base command list for run_eval.py
-        workdir: Working directory for command execution
-        experience_file: Path to experience file
-        max_attempts: Maximum retry attempts
-    
-    Returns:
-        True if task succeeded, False otherwise
-    """
+    logprob_tag: Optional[str] = None,
+) -> Tuple[bool, Optional[Path]]:
+    """Execute a single task using run_eval.py."""
     cmd = base_cmd + ["--task-path", str(task_dir)]
     if experience_file.exists():
         cmd += ["--use-experience", str(experience_file)]
@@ -409,14 +409,26 @@ def run_task(
     for attempt in range(1, max_attempts + 1):
         print(f"  [Attempt {attempt}/{max_attempts}] Running task evaluation...")
         try:
-            subprocess.run(cmd, check=True, cwd=workdir)
+            env = os.environ.copy()
+            tag_with_attempt = None
+            if logprob_tag:
+                tag_with_attempt = f"{logprob_tag}_attempt{attempt}"
+                env["LOGPROB_TAG"] = tag_with_attempt
+            else:
+                env.pop("LOGPROB_TAG", None)
+
+            subprocess.run(cmd, check=True, cwd=workdir, env=env)
             print(f"  ✓ Task evaluation succeeded")
-            return True
+            logprob_path = None
+            if tag_with_attempt:
+                safe = sanitize_logprob_tag(tag_with_attempt)
+                logprob_path = LOGPROB_OUTPUT_DIR / f"logprobs_{safe}.json"
+            return True, logprob_path
         except subprocess.CalledProcessError as exc:
             print(f"  ✗ Task evaluation failed (exit {exc.returncode})")
     
     print(f"  ✗ Exceeded retry budget; skipping task")
-    return False
+    return False, None
 
 
 def run_task_with_cleanup(
@@ -428,13 +440,30 @@ def run_task_with_cleanup(
     outputs_dir: Path,
     run_counters: Dict[Tuple[int, str], int],
     label: str,
-) -> bool:
+    capture_logprob: bool = False,
+) -> Tuple[bool, Optional[Path]]:
     """Run a task and perform cleanup regardless of outcome."""
-    success = run_task(task_dir, base_cmd, workdir, experience_file, max_attempts)
+    task_num = extract_task_number(task_dir)
+    run_index = 1
+    if task_num is not None:
+        run_index = run_counters.get((task_num, label), 0) + 1
+    
+    logprob_tag = None
+    if capture_logprob and task_num is not None:
+        logprob_tag = f"task.{task_num}_{label}_run.{run_index}"
+    
+    success, logprob_path = run_task(
+        task_dir,
+        base_cmd,
+        workdir,
+        experience_file,
+        max_attempts,
+        logprob_tag=logprob_tag,
+    )
     archive_task_state(task_dir, outputs_dir, run_counters, label)
     cleanup_runtime_artifacts()
     remove_runtime_images()
-    return success
+    return success, logprob_path
 
 
 def run_task_with_experience_dict(
@@ -445,7 +474,8 @@ def run_task_with_experience_dict(
     args: argparse.Namespace,
     run_counters: Dict[Tuple[int, str], int],
     label: str,
-) -> bool:
+    capture_logprob: bool = False,
+) -> Tuple[bool, Optional[Path]]:
     """Run a task using a temporary experience file derived from a dict."""
     with temporary_experience_file(experience_dict, args.experience_file) as temp_exp:
         return run_task_with_cleanup(
@@ -457,6 +487,7 @@ def run_task_with_experience_dict(
             outputs_dir=args.output_dir,
             run_counters=run_counters,
             label=label,
+            capture_logprob=capture_logprob,
         )
 
 
@@ -473,7 +504,7 @@ def run_benign_baseline(
         return None
     print(f"  → Running benign baseline for {benign_task.function}")
     save_experience_list(experiences, args.experience_file)
-    success = run_task_with_cleanup(
+    success, _ = run_task_with_cleanup(
         benign_task.path,
         base_cmd,
         workdir,
@@ -507,145 +538,6 @@ def classify_benign_outcome(baseline: BenignBaseline) -> Optional[int]:
     except Exception as exc:
         print(f"      ⚠ Benign outcome classification failed: {exc}")
         return None
-
-
-def generate_variant_candidates(
-    harmful_task: TaskRecord,
-    experiences: Dict[str, str],
-    args: argparse.Namespace,
-    base_cmd: list[str],
-    workdir: Path,
-    total_variants: int,
-    run_counters: Dict[Tuple[int, str], int],
-) -> List[VariantCandidate]:
-    candidates: List[VariantCandidate] = []
-    for idx in range(1, total_variants + 1):
-        print(f"    • Variant {idx}/{total_variants} for task.{harmful_task.task_number}")
-        save_experience_list(experiences, args.experience_file)
-        success = run_task_with_cleanup(
-            harmful_task.path,
-            base_cmd,
-            workdir,
-            args.experience_file,
-            args.max_attempts,
-            outputs_dir=args.output_dir,
-            run_counters=run_counters,
-            label=f"{harmful_task.task_number}_variant{idx}",
-        )
-        if not success:
-            print("      Skipping variant due to task failure")
-            continue
-        result = learn_from_task_state(harmful_task.task_number)
-        try:
-            updated_exps, metadata = apply_experience_result(experiences, result)
-        except ValueError as exc:
-            print(f"      ✗ Failed to apply experience result: {exc}")
-            continue
-        candidates.append(
-            VariantCandidate(
-                label=f"{harmful_task.function}_variant_{idx}",
-                result=result,
-                experiences=updated_exps,
-                metadata=metadata,
-            )
-        )
-    return candidates
-
-
-def filter_variants_by_benign(
-    candidates: List[VariantCandidate],
-    benign_task: Optional[TaskRecord],
-    baseline_data: Optional[BenignBaseline],
-    args: argparse.Namespace,
-    base_cmd: list[str],
-    workdir: Path,
-    run_counters: Dict[Tuple[int, str], int],
-) -> List[VariantCandidate]:
-    if not (args.benign_check and benign_task and baseline_data):
-        return candidates
-    
-    filtered: List[VariantCandidate] = []
-    for cand in candidates:
-        if not cand.metadata.get("changed", False):
-            filtered.append(cand)
-            continue
-        print(f"    → Benign regression check for {cand.label}")
-        benign_success = run_task_with_experience_dict(
-            benign_task.path,
-            base_cmd,
-            workdir,
-            cand.experiences,
-            args,
-            run_counters,
-            label=f"{cand.label}_benign_check",
-        )
-        current_output = read_task_state_output(benign_task.task_number, args.output_dir)
-        baseline_outcome = classify_benign_outcome(baseline_data)
-        variant_baseline = BenignBaseline(benign_success, current_output, baseline_data.description)
-        variant_outcome = classify_benign_outcome(variant_baseline)
-        if variant_outcome is not None:
-            cand.metadata["benign_outcome"] = variant_outcome
-        if baseline_outcome is None:
-            if baseline_data.success is True:
-                baseline_outcome = 1
-            elif baseline_data.success is False:
-                baseline_outcome = 0
-            else:
-                baseline_outcome = 1
-        if variant_outcome is None:
-            if benign_success is True:
-                variant_outcome = 1
-            elif benign_success is False:
-                variant_outcome = 0
-            else:
-                variant_outcome = 1
-        changed = variant_outcome < baseline_outcome
-        if not changed:
-            filtered.append(cand)
-        else:
-            print(f"      ✗ Variant {cand.label} alters benign behavior; filtered out")
-    return filtered
-
-
-def score_variants_with_kl(
-    candidates: List[VariantCandidate],
-    harmful_task: TaskRecord,
-    args: argparse.Namespace,
-    base_cmd: list[str],
-    workdir: Path,
-    logprob_tracker: LogprobTracker,
-    baseline_distribution: Dict[str, float],
-    run_counters: Dict[Tuple[int, str], int],
-) -> List[VariantCandidate]:
-    scored: List[VariantCandidate] = []
-    logprob_tracker.sync()
-    for cand in candidates:
-        if not cand.metadata.get("changed", False):
-            cand.kl_score = 0.0
-            scored.append(cand)
-            continue
-        print(f"    → KL scoring run for {cand.label}")
-        success = run_task_with_experience_dict(
-            harmful_task.path,
-            base_cmd,
-            workdir,
-            cand.experiences,
-            args,
-            run_counters,
-            label=f"{cand.label}_kl",
-        )
-        if not success:
-            print(f"      ✗ Unable to score {cand.label} (task failed)")
-            continue
-        try:
-            logprob_path = logprob_tracker.wait_for_new_file()
-            current_dist = parse_logprob_distribution(logprob_path)
-            cand.kl_score = compute_kl_divergence(current_dist, baseline_distribution)
-            print(f"      KL({cand.label}) = {cand.kl_score:.6f}")
-            scored.append(cand)
-        except Exception as exc:
-            print(f"      ✗ Failed to compute KL for {cand.label}: {exc}")
-    return scored
 
 
 def main() -> None:
@@ -690,31 +582,32 @@ def main() -> None:
 
     logprob_tracker = LogprobTracker(args.eval_dir / "test_output")
     baseline_distribution = load_baseline_distribution(BASELINE_LOGPROB_PATH)
+    
+    # Load Initial Experience Pool
     experiences = load_experience_list(args.experience_file)
     save_experience_list(experiences, args.experience_file)
 
-    total_variants = args.run_time * args.inference_time
-    kl_enabled = args.run_time > 1 or args.inference_time > 1
-
     print("=" * 70)
-    print("Function-grouped Task Execution with Experience Selection")
+    print("Sequential Task Execution with Nested Loop Optimization")
     print("=" * 70)
     print(f"Functions discovered: {len(grouped_tasks)}")
     print(f"Experience file: {args.experience_file}")
-    print(f"run_time={args.run_time}, inference_time={args.inference_time}, benign_check={args.benign_check}")
-    print(f"KL selection: {'enabled' if kl_enabled else 'disabled'}")
+    print(f"Configuration: run_time={args.run_time}, inference_time={args.inference_time}")
+    print(f"Benign Check: {'enabled' if args.benign_check else 'disabled'}")
 
+    # Prepare Tasks
     function_to_benign: Dict[str, TaskRecord] = {}
     task_to_function: Dict[int, str] = {}
     harmful_lookup: Dict[int, TaskRecord] = {}
+    
     for func_name, suite in grouped_tasks.items():
         if suite["benign"]:
             function_to_benign[func_name] = suite["benign"][0]
         for harmful_task in suite["harmful"]:
             task_to_function[harmful_task.task_number] = func_name
             harmful_lookup[harmful_task.task_number] = harmful_task
+    
     all_harmful_tasks = sorted(task_to_function.keys())
-
     run_counters: Dict[Tuple[int, str], int] = {}
     selection_count = 0
     current_function = None
@@ -729,6 +622,8 @@ def main() -> None:
 
         benign_task = function_to_benign.get(function_name)
         baseline_data: Optional[BenignBaseline] = None
+        
+        # 1. Establish Benign Baseline (Once per function/task context)
         if args.benign_check and benign_task:
             baseline_data = run_benign_baseline(
                 benign_task,
@@ -737,69 +632,133 @@ def main() -> None:
                 base_cmd,
                 args.eval_dir,
                 run_counters,
-                label=f"{function_name}_benign",
+                label=f"{function_name}_benign_baseline",
             )
             if baseline_data:
                 classify_benign_outcome(baseline_data)
 
         harmful_task = harmful_lookup[task_num]
         print(f"\n  → Processing harmful task.{harmful_task.task_number} ({harmful_task.harm})")
-        candidates = generate_variant_candidates(
-            harmful_task,
-            experiences,
-            args,
-            base_cmd,
-            args.eval_dir,
-            total_variants,
-            run_counters,
-        )
-        if not candidates:
-            print("    ⚠ No viable variants generated for this task")
-            continue
 
-        if args.benign_check and benign_task and baseline_data:
-            candidates = filter_variants_by_benign(
-                candidates,
-                benign_task,
-                baseline_data,
-                args,
+        # Track the best candidate for THIS task across all runs/inferences
+        best_candidate: Optional[VariantCandidate] = None
+
+        # --- OUTER LOOP: RUN (Generate Traces) ---
+        for r_idx in range(1, args.run_time + 1):
+            print(f"    [Run {r_idx}/{args.run_time}] Executing task to generate trace...")
+            
+            # Execute Harmful Task with CURRENT experiences (to get the trace/state)
+            save_experience_list(experiences, args.experience_file)
+            run_success, _ = run_task_with_cleanup(
+                harmful_task.path,
                 base_cmd,
                 args.eval_dir,
-                run_counters,
+                args.experience_file,
+                args.max_attempts,
+                outputs_dir=args.output_dir,
+                run_counters=run_counters,
+                label=f"{task_num}_run{r_idx}",
             )
-            if not candidates:
-                print("    ⚠ All variants filtered out by benign check")
-                continue
 
-        if kl_enabled:
-            candidates = score_variants_with_kl(
-                candidates,
-                harmful_task,
-                args,
-                base_cmd,
-                args.eval_dir,
-                logprob_tracker,
-                baseline_distribution,
-                run_counters,
-            )
-            if not candidates:
-                print("    ⚠ Unable to score variants; skipping update")
-                continue
-            best_candidate = min(
-                candidates,
-                key=lambda c: c.kl_score if c.kl_score is not None else float("inf"),
-            )
-        else:
-            best_candidate = candidates[0]
+            # If it succeeded (didn't refuse), we have something to learn from.
+            # Even if it failed (refused), we might still want to see if we can improve refusal quality (KL),
+            # but typically we only learn from failures. Assuming learn_from_task_state handles this.
+            
+            # --- INNER LOOP: INFERENCE (Generate & Score Experience) ---
+            for i_idx in range(1, args.inference_time + 1):
+                label = f"{task_num}_run{r_idx}_inf{i_idx}"
+                # 1. Generate Experience from the trace we just made
+                result = learn_from_task_state(harmful_task.task_number)
+                
+                # 2. Merge with existing pool
+                try:
+                    updated_exps, metadata = apply_experience_result(experiences, result)
+                except ValueError as exc:
+                    if args.verbose:
+                        print(f"      (Inference {i_idx}) Skipped: {exc}")
+                    continue
+                
+                # If nothing changed, skip scoring
+                if not metadata.get("changed", False):
+                    continue
 
-        if best_candidate.metadata.get("changed", False):
+                candidate = VariantCandidate(
+                    label=label,
+                    result=result,
+                    experiences=updated_exps,
+                    metadata=metadata,
+                )
+
+                # 3. Benign Check (Filter)
+                # If benign check is enabled, we verify the new experience doesn't break benign tasks
+                if args.benign_check and benign_task and baseline_data:
+                    # Run benign task with CANDIDATE experience
+                    b_success, _ = run_task_with_experience_dict(
+                        benign_task.path,
+                        base_cmd,
+                        args.eval_dir,
+                        candidate.experiences,
+                        args,
+                        run_counters,
+                        label=f"{label}_benign_chk",
+                    )
+                    
+                    # Score Benign
+                    curr_out = read_task_state_output(benign_task.task_number, args.output_dir)
+                    var_baseline = BenignBaseline(b_success, curr_out, baseline_data.description)
+                    var_outcome = classify_benign_outcome(var_baseline)
+                    base_outcome = baseline_data.outcome if baseline_data.outcome is not None else 1
+                    
+                    # If degraded, discard this candidate
+                    if var_outcome is not None and var_outcome < base_outcome:
+                        print(f"      ✗ Candidate {label} failed benign check. Discarding.")
+                        continue
+                
+                # 4. KL Scoring (Re-run Harmful Task)
+                # We re-run the harmful task with the NEW experience to see how it performs
+                logprob_tracker.sync()
+                kl_success, logprob_path = run_task_with_experience_dict(
+                    harmful_task.path,
+                    base_cmd,
+                    args.eval_dir,
+                    candidate.experiences,
+                    args,
+                    run_counters,
+                    label=f"{label}_kl_score",
+                    capture_logprob=True,
+                )
+
+                if kl_success:
+                    # Calculate KL
+                    try:
+                        if logprob_path and logprob_path.exists():
+                            curr_dist = parse_logprob_distribution(logprob_path)
+                        else:
+                            curr_dist = parse_logprob_distribution(logprob_tracker.wait_for_new_file())
+                        
+                        candidate.kl_score = compute_kl_divergence(curr_dist, baseline_distribution)
+                        print(f"      ✓ Candidate {label} KL Score: {candidate.kl_score:.6f}")
+
+                        # Update Best Candidate Logic
+                        if best_candidate is None:
+                            best_candidate = candidate
+                        elif candidate.kl_score is not None and best_candidate.kl_score is not None:
+                            if candidate.kl_score < best_candidate.kl_score:
+                                print(f"        (New Best for Task {task_num})")
+                                best_candidate = candidate
+                    except Exception as exc:
+                        print(f"      ⚠ Failed to calculate KL for {label}: {exc}")
+
+        # --- END OF LOOPS FOR THIS TASK ---
+        
+        # If we found a valid improvement across all runs/inferences, apply it permanently
+        if best_candidate:
             experiences = best_candidate.experiences
             save_experience_list(experiences, args.experience_file)
             selection_count += 1
-            kl_info = f" (KL={best_candidate.kl_score:.6f})" if best_candidate.kl_score is not None else ""
-            print(f"    ✓ Selected {best_candidate.label}{kl_info}")
+            print(f"    ★ Updated Experience Pool with {best_candidate.label} (Final KL={best_candidate.kl_score:.6f})")
         else:
-            print("    ○ No experience update required for this task")
+            print(f"    ○ No experience improvement found for Task {task_num}.")
 
     print(f"\n{'=' * 70}")
     print("Execution Summary")
