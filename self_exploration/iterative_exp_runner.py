@@ -38,7 +38,7 @@ from exp_generate import (
 REPO_ROOT = Path("/root/OpenAgentSafety")
 DEFAULT_TASK_ROOT = REPO_ROOT / "self_exploration" / "exp_examples"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "self_exploration" / "exp_output"
-DEFAULT_EXPERIENCE_FILE = REPO_ROOT / "self_exploration" / "experience_test.json"
+DEFAULT_EXPERIENCE_FILE = REPO_ROOT / "self_exploration" / "experience_list.json"
 DEFAULT_EVAL_DIR = REPO_ROOT / "evaluation"
 BASELINE_LOGPROB_PATH = REPO_ROOT / "self_exploration" / "gpt4o_logprobs_refusal.json"
 LOGPROB_OUTPUT_DIR = REPO_ROOT / "evaluation" / "test_output"
@@ -104,8 +104,20 @@ class LogprobTracker:
 
 
 def read_task_state_output(task_number: int, output_dir: Path) -> str:
-    """Read the serialized state output for a given task."""
-    path = output_dir / f"state_task.{task_number}.json"
+    """Read the serialized state output for a given task.
+    
+    Handles both:
+    - Single-turn (task_number < 100): state_task.X.json
+    - Multi-turn (task_number >= 100): state_multi_turn_task.X.json
+    """
+    if task_number < 100:
+        # Single-turn
+        path = output_dir / f"state_task.{task_number}.json"
+    else:
+        # Multi-turn: convert back to base number
+        base_number = task_number - 100
+        path = output_dir / f"state_multi_turn_task.{base_number}.json"
+    
     if not path.exists():
         return ""
     try:
@@ -115,25 +127,57 @@ def read_task_state_output(task_number: int, output_dir: Path) -> str:
 
 
 def read_task_description(task_dir: Path) -> str:
-    """Return task.md contents if available."""
+    """Return task.md contents if available, or combine task-turn-*.md for multi-turn tasks."""
+    # First, try single-turn format: task.md
     task_file = task_dir / "task.md"
-    if not task_file.exists():
-        return ""
-    try:
-        return task_file.read_text()
-    except Exception:
-        return ""
+    if task_file.exists():
+        try:
+            return task_file.read_text()
+        except Exception:
+            return ""
+    
+    # Second, try multi-turn format: task-turn-1.md, task-turn-2.md, etc.
+    turn_files = sorted(task_dir.glob("task-turn-*.md"))
+    if turn_files:
+        contents = []
+        for turn_file in turn_files:
+            try:
+                turn_content = turn_file.read_text()
+                turn_name = turn_file.stem  # e.g., "task-turn-1"
+                contents.append(f"=== {turn_name} ===\n{turn_content}")
+            except Exception:
+                continue
+        if contents:
+            return "\n\n".join(contents)
+    
+    return ""
 
 
 def extract_task_number(task_dir: Path) -> Optional[int]:
+    """Extract task number from directory name.
+    
+    Handles both:
+    - task.X → returns X
+    - multi_turn_task.X → returns 100 + X
+    """
     name = task_dir.name
-    if not name.startswith("task."):
-        return None
-    try:
-        return int(name.split(".", 1)[1])
-    except ValueError:
-        return None
-
+    
+    # Single-turn: task.X
+    if name.startswith("task.") and not name.startswith("task-turn"):
+        try:
+            return int(name.split(".", 1)[1])
+        except ValueError:
+            return None
+    
+    # Multi-turn: multi_turn_task.X
+    if name.startswith("multi_turn_task."):
+        try:
+            base_number = int(name.split(".", 1)[1])
+            return 100 + base_number
+        except ValueError:
+            return None
+    
+    return None
 
 def archive_task_state(
     task_dir: Path,
@@ -144,17 +188,26 @@ def archive_task_state(
     task_num = extract_task_number(task_dir)
     if task_num is None:
         return
+    
     key = (task_num, label)
     run_counters[key] = run_counters.get(key, 0) + 1
     suffix = f"_{label}_run.{run_counters[key]}"
+    
+    # Determine the correct file prefix based on task type
+    if task_num < 100:
+        file_prefix = f"task.{task_num}"
+    else:
+        base_number = task_num - 100
+        file_prefix = f"multi_turn_task.{base_number}"
+    
     artifacts = [
         (
-            outputs_dir / f"state_task.{task_num}.json",
-            outputs_dir / f"state_task.{task_num}{suffix}.json",
+            outputs_dir / f"state_{file_prefix}.json",
+            outputs_dir / f"state_{file_prefix}{suffix}.json",
         ),
         (
-            outputs_dir / f"summary_task.{task_num}.txt",
-            outputs_dir / f"summary_task.{task_num}{suffix}.txt",
+            outputs_dir / f"summary_{file_prefix}.txt",
+            outputs_dir / f"summary_{file_prefix}{suffix}.txt",
         ),
     ]
     for src, dst in artifacts:
@@ -174,16 +227,62 @@ def load_generation_summary(summary_path: Path) -> Dict[str, Dict[str, List[Task
         data = json.load(fp)
     
     grouped: Dict[str, Dict[str, List[TaskRecord]]] = {}
-    for task in data.get("tasks", []):
+    
+    # Build a lookup for single-turn tasks to get harm info for multi-turn
+    single_turn_lookup: Dict[str, Dict] = {}
+    single_turn_tasks = data.get("single_turn_tasks", {}).get("tasks", [])
+    
+    for task in single_turn_tasks:
+        task_name = task.get("task_name", "")
+        single_turn_lookup[task_name] = task
+        
+        # Extract task number from task_name (e.g., "task.2" -> 2)
+        try:
+            task_number = int(task_name.split(".")[-1])
+        except ValueError:
+            continue
+        
         function = task.get("function", "unknown_function")
         task_type = task.get("type", "harmful")
         path = Path(task["path"])
         record = TaskRecord(
-            task_number=task["task_number"],
+            task_number=task_number,
             path=path,
             function=function,
             task_type=task_type,
             harm=task.get("harm"),
+        )
+        grouped.setdefault(function, {"harmful": [], "benign": []})
+        grouped[function][task_type].append(record)
+    
+    # Process multi-turn tasks
+    multi_turn_tasks = data.get("multi_turn_tasks", {}).get("tasks", [])
+    
+    for task in multi_turn_tasks:
+        task_name = task.get("task_name", "")
+        # Extract task number from task_name (e.g., "multi_turn_task.5" -> 105)
+        # Use 100+ offset to distinguish from single-turn tasks
+        try:
+            base_number = int(task_name.split(".")[-1])
+            task_number = 100 + base_number  # e.g., multi_turn_task.5 -> 105
+        except ValueError:
+            continue
+        
+        function = task.get("function", "unknown_function")
+        
+        # Get type and harm from the original single-turn task if available
+        original_task = task.get("original_task", "")
+        original_info = single_turn_lookup.get(original_task, {})
+        task_type = original_info.get("type", "harmful")
+        harm = original_info.get("harm")
+        
+        path = Path(task["path"])
+        record = TaskRecord(
+            task_number=task_number,
+            path=path,
+            function=function,
+            task_type=task_type,
+            harm=harm,
         )
         grouped.setdefault(function, {"harmful": [], "benign": []})
         grouped[function][task_type].append(record)
@@ -450,7 +549,12 @@ def run_task_with_cleanup(
     
     logprob_tag = None
     if capture_logprob and task_num is not None:
-        logprob_tag = f"task.{task_num}_{label}_run.{run_index}"
+        # Use correct prefix for logprob tag
+        if task_num < 100:
+            logprob_tag = f"task.{task_num}_{label}_run.{run_index}"
+        else:
+            base_number = task_num - 100
+            logprob_tag = f"multi_turn_task.{base_number}_{label}_run.{run_index}"
     
     success, logprob_path = run_task(
         task_dir,
@@ -665,6 +769,8 @@ def main() -> None:
             # but typically we only learn from failures. Assuming learn_from_task_state handles this.
             
             # --- INNER LOOP: INFERENCE (Generate & Score Experience) ---
+            skip_kl_scoring = (args.run_time == 1 and args.inference_time == 1)
+
             for i_idx in range(1, args.inference_time + 1):
                 label = f"{task_num}_run{r_idx}_inf{i_idx}"
                 # 1. Generate Experience from the trace we just made
@@ -716,38 +822,44 @@ def main() -> None:
                 
                 # 4. KL Scoring (Re-run Harmful Task)
                 # We re-run the harmful task with the NEW experience to see how it performs
-                logprob_tracker.sync()
-                kl_success, logprob_path = run_task_with_experience_dict(
-                    harmful_task.path,
-                    base_cmd,
-                    args.eval_dir,
-                    candidate.experiences,
-                    args,
-                    run_counters,
-                    label=f"{label}_kl_score",
-                    capture_logprob=True,
-                )
+                if skip_kl_scoring:
+                    # No need to score, just accept this candidate
+                    print(f"      ✓ Single candidate mode - skipping KL scoring")
+                    best_candidate = candidate
+                else:
+                    # Original KL scoring logic
+                    logprob_tracker.sync()
+                    kl_success, logprob_path = run_task_with_experience_dict(
+                        harmful_task.path,
+                        base_cmd,
+                        args.eval_dir,
+                        candidate.experiences,
+                        args,
+                        run_counters,
+                        label=f"{label}_kl_score",
+                        capture_logprob=True,
+                    )
 
-                if kl_success:
-                    # Calculate KL
-                    try:
-                        if logprob_path and logprob_path.exists():
-                            curr_dist = parse_logprob_distribution(logprob_path)
-                        else:
-                            curr_dist = parse_logprob_distribution(logprob_tracker.wait_for_new_file())
-                        
-                        candidate.kl_score = compute_kl_divergence(curr_dist, baseline_distribution)
-                        print(f"      ✓ Candidate {label} KL Score: {candidate.kl_score:.6f}")
+                    if kl_success:
+                        # Calculate KL
+                        try:
+                            if logprob_path and logprob_path.exists():
+                                curr_dist = parse_logprob_distribution(logprob_path)
+                            else:
+                                curr_dist = parse_logprob_distribution(logprob_tracker.wait_for_new_file())
+                            
+                            candidate.kl_score = compute_kl_divergence(curr_dist, baseline_distribution)
+                            print(f"      ✓ Candidate {label} KL Score: {candidate.kl_score:.6f}")
 
-                        # Update Best Candidate Logic
-                        if best_candidate is None:
-                            best_candidate = candidate
-                        elif candidate.kl_score is not None and best_candidate.kl_score is not None:
-                            if candidate.kl_score < best_candidate.kl_score:
-                                print(f"        (New Best for Task {task_num})")
+                            # Update Best Candidate Logic
+                            if best_candidate is None:
                                 best_candidate = candidate
-                    except Exception as exc:
-                        print(f"      ⚠ Failed to calculate KL for {label}: {exc}")
+                            elif candidate.kl_score is not None and best_candidate.kl_score is not None:
+                                if candidate.kl_score < best_candidate.kl_score:
+                                    print(f"        (New Best for Task {task_num})")
+                                    best_candidate = candidate
+                        except Exception as exc:
+                            print(f"      ⚠ Failed to calculate KL for {label}: {exc}")
 
         # --- END OF LOOPS FOR THIS TASK ---
         
@@ -756,7 +868,10 @@ def main() -> None:
             experiences = best_candidate.experiences
             save_experience_list(experiences, args.experience_file)
             selection_count += 1
-            print(f"    ★ Updated Experience Pool with {best_candidate.label} (Final KL={best_candidate.kl_score:.6f})")
+            if best_candidate.kl_score is not None:
+                print(f"    ★ Updated Experience Pool with {best_candidate.label} (Final KL={best_candidate.kl_score:.6f})")
+            else:
+                print(f"    ★ Updated Experience Pool with {best_candidate.label} (KL scoring skipped)")
         else:
             print(f"    ○ No experience improvement found for Task {task_num}.")
 

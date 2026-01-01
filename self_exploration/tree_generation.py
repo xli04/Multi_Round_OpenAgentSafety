@@ -47,8 +47,8 @@ except ImportError:
     repair_json = None
 
 # Configuration
-BASE_OUTPUT_DIR = Path("/root/OpenAgentSafety/self_exploration/exp_examples")
-MODEL = "openai/gpt-4o-2024-08-06"
+BASE_OUTPUT_DIR = Path("/root/OpenAgentSafety/self_exploration/exp_examples_ds")
+MODEL = "deepseek/deepseek-v3.2"
 TEMPERATURE_TREE = 0.0
 TEMPERATURE_TASK = 0.0
 TEMPERATURE_MULTI_TURN = 0.0

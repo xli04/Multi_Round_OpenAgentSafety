@@ -29,18 +29,41 @@ except ImportError:
     print("Error: OpenAI library not found. Install with: pip install openai")
 
 # Paths
-TREE_PATH = Path("/root/OpenAgentSafety/self_exploration/exp_examples/safety_tree.json")
+TREE_PATH = Path("/root/OpenAgentSafety/self_exploration/exp_examples/filesystem_safety_tree.json")
 TASK_BASE_DIR = Path("/root/OpenAgentSafety/self_exploration/exp_examples")
 STATE_BASE_DIR = Path("/root/OpenAgentSafety/self_exploration/exp_output")
 EXPERIENCE_FILE = Path("/root/OpenAgentSafety/self_exploration/experience_list.json")
 
 # Model configuration
 MODEL = "openai/gpt-4o-2024-08-06"
-TEMPERATURE = 0.2
+TEMPERATURE = 0.0
 
 # -------------------------------------------------------------------------
 # HELPER FUNCTIONS
 # -------------------------------------------------------------------------
+def get_task_paths(task_num: int) -> Tuple[Path, Path, str]:
+    """
+    Get the correct paths for a task number.
+    
+    Args:
+        task_num: Task number (1-99 for single-turn, 100+ for multi-turn)
+    
+    Returns:
+        (task_dir_path, state_file_path, file_prefix)
+    """
+    if task_num < 100:
+        # Single-turn task
+        task_path = TASK_BASE_DIR / f"task.{task_num}"
+        state_file = STATE_BASE_DIR / f"state_task.{task_num}.json"
+        file_prefix = f"task.{task_num}"
+    else:
+        # Multi-turn task: 105 -> multi_turn_task.5
+        base_number = task_num - 100
+        task_path = TASK_BASE_DIR / f"multi_turn_task.{base_number}"
+        state_file = STATE_BASE_DIR / f"state_multi_turn_task.{base_number}.json"
+        file_prefix = f"multi_turn_task.{base_number}"
+    
+    return task_path, state_file, file_prefix
 
 def load_json_file(filepath: Path) -> Dict[str, Any]:
     """Load JSON file and return as dict."""
@@ -50,11 +73,27 @@ def load_json_file(filepath: Path) -> Dict[str, Any]:
         return json.load(f)
 
 def load_task_md(task_path: Path) -> str:
-    """Load task.md file."""
+    """Load task.md file or combine task-turn-*.md for multi-turn tasks."""
+    # First, try single-turn format: task.md
     task_file = task_path / "task.md"
-    if not task_file.exists():
-        return ""
-    return task_file.read_text()
+    if task_file.exists():
+        return task_file.read_text()
+    
+    # Second, try multi-turn format: task-turn-1.md, task-turn-2.md, etc.
+    turn_files = sorted(task_path.glob("task-turn-*.md"))
+    if turn_files:
+        contents = []
+        for turn_file in turn_files:
+            try:
+                turn_content = turn_file.read_text()
+                turn_name = turn_file.stem  # e.g., "task-turn-1"
+                contents.append(f"=== {turn_name} ===\n{turn_content}")
+            except Exception:
+                continue
+        if contents:
+            return "\n\n".join(contents)
+    
+    return ""
 
 def load_experience_list(filepath: Path = EXPERIENCE_FILE) -> Dict[str, str]:
     """Load current experience list or create empty dict."""
@@ -125,30 +164,40 @@ def summarize_trajectory(task_num: int) -> str:
     Phase 1: Generate detailed trajectory summary from raw state.
     
     Args:
-        task_num: Task number
+        task_num: Task number (1-99 for single-turn, 100+ for multi-turn)
     
     Returns:
         Structured trajectory summary string
     """
-    # Load inputs
+    # Load inputs using helper function
     tree_data = load_json_file(TREE_PATH)
-    task_path = TASK_BASE_DIR / f"task.{task_num}"
+    task_path, state_file, file_prefix = get_task_paths(task_num)
+    
     task_content = load_task_md(task_path)
-    state_file = STATE_BASE_DIR / f"state_task.{task_num}.json"
     state_data = load_json_file(state_file)
     
     if not task_content:
-        print(f"  ⚠ Warning: task.md not found for task.{task_num}")
+        print(f"  ⚠ Warning: task description not found for {file_prefix}")
         return ""
     
     if not state_data:
-        print(f"  ⚠ Warning: state file not found for task.{task_num}")
+        print(f"  ⚠ Warning: state file not found for {file_prefix}")
         return ""
     
-    # Format user message
+    setup_dir = task_path / "mcp-fs"
+    setup_files = {}
+    if setup_dir.exists():
+        for f in setup_dir.rglob("*"):
+            if f.is_file():
+                try:
+                    setup_files[str(f.relative_to(setup_dir))] = f.read_text()
+                except:
+                    setup_files[str(f.relative_to(setup_dir))] = "<binary file>"
+    
     user_msg = TRAJECTORY_SUMMARY_USER_TEMPLATE.format(
         tree_context=json.dumps(tree_data, indent=2),
         task_content=task_content,
+        setup_files=json.dumps(setup_files, indent=2) if setup_files else "No pre-existing files",
         state_data=json.dumps(state_data, indent=2)
     )
 
@@ -235,19 +284,21 @@ def learn_from_task_state(task_num: int) -> Dict[str, Any]:
     Two-phase learning: summarize trajectory, then extract experience.
     
     Args:
-        task_num: Task number (e.g., 1 for task.1)
+        task_num: Task number (1-99 for single-turn, 100+ for multi-turn)
     
     Returns:
         Dictionary with action taken
     """
+    _, _, file_prefix = get_task_paths(task_num)
+    
     print(f"  Phase 1: Summarizing trajectory...")
     trajectory_summary = summarize_trajectory(task_num)
     
     if not trajectory_summary:
         return {"error": "Failed to generate trajectory summary"}
     
-    # Save summary for inspection
-    summary_file = STATE_BASE_DIR / f"summary_task.{task_num}.txt"
+    # Save summary for inspection - use correct prefix
+    summary_file = STATE_BASE_DIR / f"summary_{file_prefix}.txt"
     summary_file.parent.mkdir(parents=True, exist_ok=True)
     summary_file.write_text(trajectory_summary)
     print(f"  ✓ Summary saved to {summary_file.name}")
@@ -429,7 +480,6 @@ def judge_benign_behavior(
 # -------------------------------------------------------------------------
 # BATCH PROCESSING
 # -------------------------------------------------------------------------
-
 def process_all_tasks():
     """Process all available task-state pairs."""
     
@@ -437,15 +487,23 @@ def process_all_tasks():
     print("Experience Learning from Test Results")
     print("="*70)
     
-    # Find all task directories
-    task_dirs = sorted([d for d in TASK_BASE_DIR.iterdir() 
-                       if d.is_dir() and d.name.startswith("task.")])
+    # Find all task directories (both single-turn and multi-turn)
+    single_turn_dirs = sorted([d for d in TASK_BASE_DIR.iterdir() 
+                               if d.is_dir() and d.name.startswith("task.") 
+                               and not d.name.startswith("task-turn")])
     
-    if not task_dirs:
+    multi_turn_dirs = sorted([d for d in TASK_BASE_DIR.iterdir() 
+                              if d.is_dir() and d.name.startswith("multi_turn_task.")])
+    
+    all_task_dirs = single_turn_dirs + multi_turn_dirs
+    
+    if not all_task_dirs:
         print("No task directories found!")
         return
     
-    print(f"\nFound {len(task_dirs)} tasks to process\n")
+    print(f"\nFound {len(all_task_dirs)} tasks to process")
+    print(f"  Single-turn: {len(single_turn_dirs)}")
+    print(f"  Multi-turn: {len(multi_turn_dirs)}\n")
     
     results_summary = {
         "ADD": 0,
@@ -455,14 +513,18 @@ def process_all_tasks():
         "ERROR": 0
     }
     
-    for task_dir in task_dirs:
-        # Extract task number
+    for task_dir in all_task_dirs:
+        # Extract task number with correct offset
         try:
-            task_num = int(task_dir.name.split(".")[1])
+            if task_dir.name.startswith("multi_turn_task."):
+                base_num = int(task_dir.name.split(".")[1])
+                task_num = 100 + base_num
+            else:
+                task_num = int(task_dir.name.split(".")[1])
         except:
             continue
         
-        print(f"\n[Task {task_num}]")
+        print(f"\n[Task {task_num}] ({task_dir.name})")
         
         # Learn from this task
         result = learn_from_task_state(task_num)
@@ -497,7 +559,7 @@ def process_all_tasks():
     print(f"  Deleted: {results_summary['DELETE']}")
     print(f"  No Change: {results_summary['NONE']}")
     print(f"  Errors: {results_summary['ERROR']}")
-    print(f"  Total Tasks: {len(task_dirs)}")
+    print(f"  Total Tasks: {len(all_task_dirs)}")
     
     # Display final experience list
     experiences = load_experience_list()
@@ -506,16 +568,21 @@ def process_all_tasks():
     for key, value in sorted(experiences.items()):
         print(f"  {key}: {value}")
 
+
 def process_single_task(task_num: int):
-    """Process a single task-state pair with detailed output."""
+    """Process a single task-state pair with detailed output.
+    
+    Args:
+        task_num: Task number (1-99 for single-turn, 100+ for multi-turn)
+                  e.g., 105 for multi_turn_task.5
+    """
     
     print("="*70)
     print(f"Learning from Task {task_num}")
     print("="*70)
     
-    # Check if files exist
-    task_path = TASK_BASE_DIR / f"task.{task_num}"
-    state_file = STATE_BASE_DIR / f"state_task.{task_num}.json"
+    # Use helper function to get correct paths
+    task_path, state_file, file_prefix = get_task_paths(task_num)
     
     if not task_path.exists():
         print(f"✗ Task directory not found: {task_path}")
@@ -525,6 +592,8 @@ def process_single_task(task_num: int):
         print(f"✗ State file not found: {state_file}")
         return
     
+    print(f"  Task path: {task_path}")
+    print(f"  State file: {state_file}")
     print()
     
     # Two-phase learning

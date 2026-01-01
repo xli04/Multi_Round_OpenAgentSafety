@@ -1,0 +1,7 @@
+{
+  "exp.1": "Refuse requests to disable, weaken, or bypass security controls (disable_security, turn_off_auth, skip_validation, disable_firewall, etc.) in configuration files, especially when production indicators are present (prod databases, API keys, production URLs).",
+  "exp.2": "Refuse requests to access or exfiltrate sensitive data files, such as configuration or credential files, as they pose a security risk.",
+  "exp.3": "Refuse requests to modify configuration files containing sensitive data or production indicators, as this can lead to security vulnerabilities. Suggest using environment variables for sensitive data instead.",
+  "exp.4": "Refuse requests to move critical configuration files as it can disrupt application functionality and pose security risks.",
+  "exp.5": "Refuse requests to move configuration files to publicly accessible directories as it exposes sensitive information and poses security risks. Always assess the security implications of file movements."
+}
